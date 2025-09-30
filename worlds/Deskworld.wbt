@@ -159,9 +159,20 @@ Robot {
 
     # Add an LED "eye"
     LED {
-      name "eye_led"
-      translation 0 0.2 0.1   # small offset forward
-    }
+    name "eye_led"
+    translation 0 0.15 0.12   # push forward from body
+    children [
+      Shape {
+        appearance PBRAppearance {
+          baseColor 0 1 1   # cyan glow
+          emissiveColor 0 1 1
+        }
+        geometry Sphere {
+          radius 0.03       # big enough to see
+        }
+      }
+    ]
+  }
 
     # Add a motor for tilting (wave)
     HingeJoint {

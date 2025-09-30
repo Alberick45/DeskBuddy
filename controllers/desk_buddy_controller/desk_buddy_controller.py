@@ -23,8 +23,10 @@ def blink_lights(step_count):
     """Blink LED on and off."""
     if (step_count // 10) % 2 == 0:
         led.set(1)  # on
+        print(f" led on")
     else:
         led.set(0)  # off
+        print(f" led off")
 
 def say_hello():
     """Print a hello message (later could add sound)."""
