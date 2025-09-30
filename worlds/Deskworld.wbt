@@ -1,15 +1,162 @@
 #VRML_SIM R2025a utf8
 
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
-
 WorldInfo {
+  title "Table"
 }
 Viewpoint {
-  orientation -0.5773502691896257 0.5773502691896257 0.5773502691896257 2.0944
-  position -1.3249117705748007e-05 -1.3249155169350786e-05 5.3144100000237895
+  orientation -0.6661791694886054 0.5543924889255317 0.49885296667698215 2.0937553545058813
+  position -0.5944616887027931 1.4457366093462487 5.371279107595405
+  description "Default View"
 }
-TexturedBackground {
+Background {
+  skyColor [
+    0.5 0.7 1
+  ]
 }
-TexturedBackgroundLight {
+Pose {
+  translation 0 -0.05 -0.03
+  rotation 1 0 0 4.692820414042842e-06
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.6 0.3
+      }
+      geometry Box {
+        size 20 0.1 20
+      }
+    }
+  ]
+}
+Pose {
+  translation 0 1 -10
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.85
+      }
+      geometry Box {
+        size 20 2 0.2
+      }
+    }
+  ]
+}
+Pose {
+  translation 0 1 10
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.85
+      }
+      geometry Box {
+        size 20 2 0.2
+      }
+    }
+  ]
+}
+Pose {
+  translation -10 1 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.85
+      }
+      geometry Box {
+        size 0.2 2 20
+      }
+    }
+  ]
+}
+Pose {
+  translation 10 1 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.85 0.85 0.85
+      }
+      geometry Box {
+        size 0.2 2 20
+      }
+    }
+  ]
+}
+Pose {
+  translation 0 0.55 0
+  rotation 0 1 0 4.692820414042842e-06
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.5 0.3 0.2
+      }
+      geometry Box {
+        size 1.5 0.05 0.8
+      }
+    }
+    Pose {
+      translation -0.7 -0.25 -0.35
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.3 0.2 0.1
+          }
+          geometry Box {
+            size 0.05 0.5 0.05
+          }
+        }
+      ]
+    }
+    Pose {
+      translation 0.7 -0.25 -0.35
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.3 0.2 0.1
+          }
+          geometry Box {
+            size 0.05 0.5 0.05
+          }
+        }
+      ]
+    }
+    Pose {
+      translation -0.7 -0.25 0.35
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.3 0.2 0.1
+          }
+          geometry Box {
+            size 0.05 0.5 0.05
+          }
+        }
+      ]
+    }
+    Pose {
+      translation 0.7 -0.25 0.35
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.3 0.2 0.1
+          }
+          geometry Box {
+            size 0.05 0.5 0.05
+          }
+        }
+      ]
+    }
+  ]
+}
+Robot {
+  translation 0 0.7 0
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.2 0.6 0.9
+      }
+      geometry Box {
+        size 0.2 0.3 0.2
+      }
+    }
+  ]
+  name "RoboDeskBuddy"
+  controller "desk_buddy_controller"
 }
