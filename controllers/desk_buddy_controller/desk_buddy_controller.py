@@ -13,6 +13,15 @@ motor = robot.getDevice("tilt_motor")
 
 # --- Actions ---
 
+def move_forward():
+    print("moving forward")
+def move_backward():
+    print("moving back")
+def move_left():
+    print("moving left")
+def move_right():
+    print("moving right")    
+    
 def wave(step_count):
     """Make the robot tilt as a wave gesture."""
     angle = (step_count % 40) - 20  # oscillates between -20 and 20
