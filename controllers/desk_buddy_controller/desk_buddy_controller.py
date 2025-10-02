@@ -11,16 +11,17 @@ class DeskBuddy(Robot):
         super().__init__()  # Initialize Robot base class
 
         # Devices
-        self.led = self.getDevice("eye_led")
+        self.led_left = self.getDevice("eye_led_left")
+        self.led_right = self.getDevice("eye_led_right")
         self.motor = self.getDevice("tilt_motor")
 
         # Reset motor position
         self.motor.setPosition(0.0)
 
     # --- Actions ---
-
     def move_forward(self):
-        print("➡️ Moving forward")
+        for _ in range(3):
+            print("➡️ Moving forward")
 
     def move_backward(self):
         print("⬅️ Moving backward")
@@ -45,13 +46,16 @@ class DeskBuddy(Robot):
         """Blink LED on and off."""
         print("✨ Blinking LEDs...")
         for _ in range(3):
-            self.led.set(1)   # on
+            self.led_left.set(1)   # on
+            self.led_right.set(1)   # on
             self.step(300)
-            self.led.set(0)   # off
+            self.led_left.set(0)   # off
+            self.led_right.set(0)   # off
             self.step(300)
 
     def say_hello(self):
         """Print a hello message (later could add sound)."""
+        self.move_forward()
         print("🗣️ Hello! I’m your Robo Desk Buddy!")
 
 
@@ -69,6 +73,9 @@ def main():
             bot.blink_lights()
         elif key == ord('H'): # press H for hello
             bot.say_hello()
+        elif key == ord('Y'):
+            bot.say_hello(); bot.blink_lights(); bot.wave()
 
 if __name__ == "__main__":
     main()
+    print("Key pressed:", key)

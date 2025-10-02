@@ -147,62 +147,138 @@ Pose {
   ]
 }
 Robot {
-  translation 0 0.7 0
+  translation 0 0.9 0
   children [
+
+    # --- Main Body ---
     Shape {
       appearance PBRAppearance {
         baseColor 0.2 0.6 0.9
+        roughness 0.3
+        metalness 0.1
       }
       geometry Box {
-        size 0.2 0.3 0.2
+        size 0.25 0.3 0.25
       }
     }
 
+    # --- Keyboard input ---
     Keyboard {
       name "keyboard"
     }
 
-    # Add an LED "eye"
-    LED {
-    name "eye_led"
-    translation 0 0.15 0.12   # push forward from body
+    # --- "Head" tilt joint (so it can nod / wave) ---
+HingeJoint {
+  jointParameters HingeJointParameters {
+    axis 0 1 0
+  }
+  device [
+    RotationalMotor {
+      name "tilt_motor"
+    }
+  ]
+  endPoint Solid {
+    translation 0 0.2 0
+    children [
+      # Head cube
+      Shape {
+        appearance PBRAppearance {
+          baseColor 0.9 0.3 0.2
+          roughness 0.4
+        }
+        geometry Box {
+          size 0.2 0.2 0.2
+        }
+      }
+      # --- "Face" (LED Eyes) ---
+      # 👀 Eyes go on the head, slightly forward
+      Transform {
+        translation 0 0.05 0.11
+        children [
+          # Left eye
+          LED {
+            name "eye_led_left"
+            children [
+              Shape {
+                appearance PBRAppearance {
+                  baseColor 0 0 0
+                  emissiveColor 0 1 1
+                }
+                geometry Sphere {
+                  radius 0.025
+                }
+              }
+            ]
+          }
+
+          # Right eye (shifted on X-axis)
+          Transform {
+            translation 0.06 0 0
+            children [
+              LED {
+                name "eye_led_right"
+                children [
+                  Shape {
+                    appearance PBRAppearance {
+                      baseColor 0 0 0
+                      emissiveColor 0 1 1
+                    }
+                    geometry Sphere {
+                      radius 0.025
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+
+
+    
+    
+
+    # --- Little base/feet ---
+    # --- Left Foot/Wheel ---
+  Transform {
+    translation -0.08 -0.2 0   # shifted left
     children [
       Shape {
         appearance PBRAppearance {
-          baseColor 0 1 1   # cyan glow
-          emissiveColor 0 1 1
+          baseColor 0.1 0.1 0.1
+          roughness 0.4
+          metalness 0.0
         }
-        geometry Sphere {
-          radius 0.03       # big enough to see
+        geometry Cylinder {
+          radius 0.05
+          height 0.04
         }
       }
     ]
   }
 
-    # Add a motor for tilting (wave)
-    HingeJoint {
-      jointParameters HingeJointParameters {
-        axis 0 1 0
-      }
-      device [
-        RotationalMotor {
-          name "tilt_motor"
+  # --- Right Foot/Wheel ---
+  Transform {
+    translation 0.08 -0.2 0   # shifted right
+    children [
+      Shape {
+        appearance PBRAppearance {
+          baseColor 0.1 0.1 0.1
+          roughness 0.4
+          metalness 0.0
         }
-      ]
-      endPoint Solid {
-        translation 0 0.15 0
-        children [
-          Shape {
-            appearance PBRAppearance {
-              baseColor 0.9 0.3 0.2
-            }
-            geometry Box {
-              size 0.2 0.3 0.2
-            }
-          }
-        ]
+        geometry Cylinder {
+          radius 0.05
+          height 0.04
+        }
       }
-    }
+    ]
+  }
+
+
   ]
   name "RoboDeskBuddy"
   controller "desk_buddy_controller"
