@@ -1,4 +1,5 @@
 #VRML_SIM R2025a utf8
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/computers/protos/Keyboard.proto"
 
 WorldInfo {
   title "Table"
@@ -155,6 +156,10 @@ Robot {
       geometry Box {
         size 0.2 0.3 0.2
       }
+    }
+
+    Keyboard {
+      name "keyboard"
     }
 
     # Add an LED "eye"

@@ -3,54 +3,72 @@ from controller import Robot
 # Time step
 TIME_STEP = 32
 
-# Initialize robot
-robot = Robot()
 print("🤖 Robo Desk Buddy is alive!")
 
-# Get devices
-led = robot.getDevice("eye_led")
-motor = robot.getDevice("tilt_motor")
+# Define robot class
+class DeskBuddy(Robot):
+    def __init__(self):
+        super().__init__()  # Initialize Robot base class
 
-# --- Actions ---
+        # Devices
+        self.led = self.getDevice("eye_led")
+        self.motor = self.getDevice("tilt_motor")
 
-def move_forward():
-    print("moving forward")
-def move_backward():
-    print("moving back")
-def move_left():
-    print("moving left")
-def move_right():
-    print("moving right")    
-    
-def wave(step_count):
-    """Make the robot tilt as a wave gesture."""
-    angle = (step_count % 40) - 20  # oscillates between -20 and 20
-    print(f"👋 Waving at angle {angle}")
-    motor.setPosition(angle)
+        # Reset motor position
+        self.motor.setPosition(0.0)
 
-def blink_lights(step_count):
-    """Blink LED on and off."""
-    if (step_count // 10) % 2 == 0:
-        led.set(1)  # on
-        print(f" led on")
-    else:
-        led.set(0)  # off
-        print(f" led off")
+    # --- Actions ---
 
-def say_hello():
-    """Print a hello message (later could add sound)."""
-    print("🗣️ Hello! I’m your Robo Desk Buddy!")
+    def move_forward(self):
+        print("➡️ Moving forward")
+
+    def move_backward(self):
+        print("⬅️ Moving backward")
+
+    def move_left(self):
+        print("⬆️ Moving left")
+
+    def move_right(self):
+        print("⬇️ Moving right")    
+
+    def wave(self):
+        """Make the robot tilt as a wave gesture."""
+        print("👋 Waving...")
+        self.motor.setPosition(0.5)   # tilt right
+        self.step(500)                # wait 0.5 sec
+        self.motor.setPosition(-0.5)  # tilt left
+        self.step(500)
+        self.motor.setPosition(0.0)   # reset
+        self.step(500)
+
+    def blink_lights(self):
+        """Blink LED on and off."""
+        print("✨ Blinking LEDs...")
+        for _ in range(3):
+            self.led.set(1)   # on
+            self.step(300)
+            self.led.set(0)   # off
+            self.step(300)
+
+    def say_hello(self):
+        """Print a hello message (later could add sound)."""
+        print("🗣️ Hello! I’m your Robo Desk Buddy!")
+
 
 # --- Main loop ---
+def main():
+    bot = DeskBuddy()
+    keyboard = bot.getKeyboard()
+    keyboard.enable(TIME_STEP)
 
-step_count = 0
-while robot.step(TIME_STEP) != -1:
-    step_count += 1
+    while bot.step(TIME_STEP) != -1:
+        key = keyboard.getKey()
+        if key == ord('W'):   # press W for wave
+            bot.wave()
+        elif key == ord('B'): # press B for blink
+            bot.blink_lights()
+        elif key == ord('H'): # press H for hello
+            bot.say_hello()
 
-    # Call actions
-    if step_count % 200 < 100:
-        wave(step_count)
-    blink_lights(step_count)
-
-    if step_count % 300 == 0:
-        say_hello()
+if __name__ == "__main__":
+    main()
