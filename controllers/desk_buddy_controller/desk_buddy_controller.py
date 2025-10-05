@@ -33,6 +33,16 @@ class DeskBuddy(Robot):
         self.motor = self.getDevice("tilt_motor")         # Head tilt motor
         self.motor.setPosition(0.0)                       # Reset to neutral position
         
+        # Wheel motors for actual robot movement
+        self.left_wheel = self.getDevice("left_wheel_motor")   # Left wheel motor
+        self.right_wheel = self.getDevice("right_wheel_motor") # Right wheel motor
+        
+        # Set wheels to velocity control mode
+        self.left_wheel.setPosition(float('inf'))
+        self.right_wheel.setPosition(float('inf'))
+        self.left_wheel.setVelocity(0.0)
+        self.right_wheel.setVelocity(0.0)
+        
         # ==========================================
         # THREADING CONTROL SYSTEM
         # ==========================================
@@ -47,7 +57,151 @@ class DeskBuddy(Robot):
     # Key principle: NO self.step() calls in these methods!
     # Use time.sleep() instead to avoid simulation crashes
     
-    def wave_threaded(self):
+    def turn(self, direction, duration):
+        """
+        Thread-safe turn action - physically rotates robot left or right using wheel motors
+        
+        Parameters:
+        - direction: 'left' or 'right'
+        - duration: time in seconds to turn
+        
+        Physical Implementation:
+        - Uses differential drive: opposite wheel directions create rotation
+        - Left turn: left wheel backward, right wheel forward
+        - Right turn: left wheel forward, right wheel backward
+        """
+        print(f"🔄 Turning {direction} for {duration} seconds...")
+        
+        # Set wheel velocities for turning
+        turn_speed = 2.0  # Rotation speed
+        
+        with self.action_lock:
+            if direction.lower() == 'left':
+                # Left turn: left wheel backward, right wheel forward
+                self.left_wheel.setVelocity(-turn_speed)
+                self.right_wheel.setVelocity(turn_speed)
+            elif direction.lower() == 'right':
+                # Right turn: left wheel forward, right wheel backward
+                self.left_wheel.setVelocity(turn_speed)
+                self.right_wheel.setVelocity(-turn_speed)
+        
+        # Turn for specified duration
+        time.sleep(duration)
+        
+        # Stop wheels after turning
+        with self.action_lock:
+            self.left_wheel.setVelocity(0.0)
+            self.right_wheel.setVelocity(0.0)
+        
+        print(f"🔄 Turn {direction} complete!")
+
+    def speak(self, message):
+        """
+        Thread-safe speak action - prints message with visual LED feedback
+        
+        Parameters:
+        - message: The string message to "speak"
+        
+        Enhanced Features:
+        - LED eyes blink while speaking to show activity
+        - Speech timing based on message length
+        - Visual feedback enhances the speaking experience
+        """
+        print(f"🗣️ Speaking: '{message}'")
+        
+        # Calculate speaking duration based on message length (more realistic)
+        words = len(message.split())
+        speak_duration = max(1.0, words * 0.3)  # ~0.3 seconds per word, minimum 1 second
+        
+        # Blink LEDs while speaking to show activity
+        blink_interval = 0.5  # Blink every 0.5 seconds
+        elapsed_time = 0.0
+        
+        while elapsed_time < speak_duration:
+            # Turn LEDs on
+            with self.action_lock:
+                self.led_left.set(1)
+                self.led_right.set(1)
+            
+            time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
+            elapsed_time += blink_interval/2
+            
+            if elapsed_time >= speak_duration:
+                break
+                
+            # Turn LEDs off  
+            with self.action_lock:
+                self.led_left.set(0)
+                self.led_right.set(0)
+            
+            time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
+            elapsed_time += blink_interval/2
+        
+        # Ensure LEDs are off when done speaking
+        with self.action_lock:
+            self.led_left.set(0)
+            self.led_right.set(0)
+        
+        print("🗣️ Speak action complete!")
+
+    def move_forward(self, duration=2.0):
+        """
+        Thread-safe forward movement - moves robot straight ahead
+        
+        Parameters:
+        - duration: time in seconds to move forward
+        
+        Physical Implementation:
+        - Both wheels rotate in same direction at same speed
+        - Creates straight-line forward movement
+        """
+        print(f"➡️ Moving forward for {duration} seconds...")
+        
+        move_speed = 2.0  # Forward movement speed
+        
+        # Both wheels forward at same speed
+        with self.action_lock:
+            self.left_wheel.setVelocity(move_speed)
+            self.right_wheel.setVelocity(move_speed)
+        
+        # Move for specified duration
+        time.sleep(duration)
+        
+        # Stop wheels
+        with self.action_lock:
+            self.left_wheel.setVelocity(0.0)
+            self.right_wheel.setVelocity(0.0)
+        
+        print("➡️ Forward movement complete!")
+
+    def move_backward(self, duration=2.0):
+        """
+        Thread-safe backward movement - moves robot straight back
+        
+        Parameters:
+        - duration: time in seconds to move backward
+        """
+        print(f"⬅️ Moving backward for {duration} seconds...")
+        
+        move_speed = 2.0  # Backward movement speed
+        
+        # Both wheels backward at same speed
+        with self.action_lock:
+            self.left_wheel.setVelocity(-move_speed)
+            self.right_wheel.setVelocity(-move_speed)
+        
+        # Move for specified duration
+        time.sleep(duration)
+        
+        # Stop wheels
+        with self.action_lock:
+            self.left_wheel.setVelocity(0.0)
+            self.right_wheel.setVelocity(0.0)
+        
+        print("⬅️ Backward movement complete!")
+
+
+    def wave(self):
         """
         Thread-safe wave action - tilts head left and right
         
@@ -75,7 +229,7 @@ class DeskBuddy(Robot):
         
         print("👋 Wave complete!")
 
-    def blink_lights_threaded(self):
+    def blink_lights(self):
         """
         Thread-safe LED blinking - flashes both eyes 3 times
         
@@ -103,7 +257,7 @@ class DeskBuddy(Robot):
         
         print("✨ All blinks complete!")
 
-    def say_hello_threaded(self):
+    def say_hello(self):
         """
         Thread-safe hello action - prints greeting messages
         
@@ -120,7 +274,7 @@ class DeskBuddy(Robot):
         print("🗣️ Hello sequence complete!")
 
 
-    def patrol_mode_threaded(self):
+    def patrol_mode(self):
         """Continuous patrol with head scanning"""
         for _ in range(5):  # Patrol 5 cycles
             print("🚶 Patrolling...")
@@ -135,7 +289,7 @@ class DeskBuddy(Robot):
                 self.motor.setPosition(-0.7)
             time.sleep(0.5)
 
-    def dance_sequence_threaded(self):
+    def dance_sequence(self):
         """Coordinated dance with lights and movement"""
         for beat in range(4):
             # Head movement
@@ -155,7 +309,7 @@ class DeskBuddy(Robot):
         Execute any function in a separate thread with automatic cleanup
         
         Parameters:
-        - func: The function to run in a thread (e.g., self.wave_threaded)
+        - func: The function to run in a thread (e.g., self.wave)
         
         Returns:
         - thread: The created thread object
@@ -205,9 +359,11 @@ class DeskBuddy(Robot):
         
         # Reset all devices to neutral/off state
         with self.action_lock:
-            self.motor.setPosition(0.0)  # Head to center
-            self.led_left.set(0)         # LEDs off
-            self.led_right.set(0)        # LEDs off
+            self.motor.setPosition(0.0)      # Head to center
+            self.led_left.set(0)             # LEDs off
+            self.led_right.set(0)            # LEDs off
+            self.left_wheel.setVelocity(0.0) # Stop left wheel
+            self.right_wheel.setVelocity(0.0)# Stop right wheel
         
         print(f"🧹 Active threads: {len(self.active_threads)}")
         print("⚠️ Note: Threads will complete their current sleep cycles")
@@ -232,13 +388,18 @@ def main():
 
     # Display controls
     print("=" * 60)
-    print("🎮 THREADING DEMO CONTROLS:")
+    print("🎮 DESKBUDDY ROBOT CONTROLS:")
     print("  W = Wave (head tilt)")
     print("  B = Blink LEDs") 
     print("  H = Say Hello (text messages)")
     print("  P = Patrol Mode (head scanning)")
-    print("  D = Begin Salsa Dance (text messages)")
+    print("  D = Begin Salsa Dance")
     print("  Y = ALL ACTIONS SIMULTANEOUSLY! 🎭")
+    print("  T = Turn Left & Speak")
+    print("  F = Move Forward")
+    print("  R = Move Backward")
+    print("  L = Turn Left")
+    print("  G = Turn Right") 
     print("  S = Stop/Reset all actions")
     print("  Q = Quit simulation")
     print("=" * 60)
@@ -252,23 +413,43 @@ def main():
         # Process individual actions (each starts a new thread)
         if key == ord('W'):
             print("🔄 Starting wave action in new thread...")
-            bot.run_async(bot.wave_threaded)
+            bot.run_async(bot.wave)
             
         elif key == ord('B'):
             print("🔄 Starting blink action in new thread...")
-            bot.run_async(bot.blink_lights_threaded)
+            bot.run_async(bot.blink_lights)
 
         elif key == ord('H'):
             print("🔄 Starting hello action in new thread...")
-            bot.run_async(bot.say_hello_threaded)
+            bot.run_async(bot.say_hello)
     
         elif key == ord('D'):
             print("🔄 Starting dance action in new thread...")
-            bot.run_async(bot.dance_sequence_threaded)
+            bot.run_async(bot.dance_sequence)
 
         elif key == ord('P'):
             print("🔄 Starting patrol mode in new thread...")
-            bot.run_async(bot.patrol_mode_threaded)
+            bot.run_async(bot.patrol_mode)
+        
+        # ==========================================
+        # MOVEMENT CONTROLS
+        # ==========================================
+        elif key == ord('F'):
+            print("🔄 Starting forward movement in new thread...")
+            bot.run_async(lambda: bot.move_forward(2.0))
+            
+        elif key == ord('R'):
+            print("🔄 Starting backward movement in new thread...")
+            bot.run_async(lambda: bot.move_backward(2.0))
+            
+        elif key == ord('L'):
+            print("🔄 Starting left turn in new thread...")
+            bot.run_async(lambda: bot.turn('left', 1.5))
+            
+        elif key == ord('G'):
+            print("🔄 Starting right turn in new thread...")
+            bot.run_async(lambda: bot.turn('right', 1.5))
+        
         # ==========================================
         # SIMULTANEOUS ACTIONS DEMO
         # ==========================================
@@ -278,12 +459,27 @@ def main():
             
             # Start all three actions simultaneously
             # Each runs in its own thread with independent timing
-            thread1 = bot.run_async(bot.say_hello_threaded)    # ~0.6 seconds total
-            thread2 = bot.run_async(bot.blink_lights_threaded) # ~1.8 seconds total  
-            thread3 = bot.run_async(bot.wave_threaded)         # ~1.5 seconds total
+            thread1 = bot.run_async(bot.say_hello)    # ~0.6 seconds total
+            thread2 = bot.run_async(bot.blink_lights) # ~1.8 seconds total  
+            thread3 = bot.run_async(bot.wave)         # ~1.5 seconds total
             
             print(f"✅ Started {len(bot.active_threads)} simultaneous threads!")
             print("👀 Watch: Head waves + LEDs blink + hello messages all at once!")
+
+
+
+        elif key == ord('T'):
+            print("🎭 TURN AND SPEAK DEMO!")
+            print("🚀 Starting turn and speak actions in parallel threads...")
+            
+            # Start turn and speak actions with proper parameters
+            thread1 = bot.run_async(lambda: bot.turn('left', 2.0))    # Turn left for 2 seconds
+            thread2 = bot.run_async(lambda: bot.speak('Hello! I am turning left now!')) # Speak message
+            
+            print(f"✅ Started {len(bot.active_threads)} simultaneous threads!")
+            print("👀 Watch: Robot turns left while speaking!")
+
+
             
         # ==========================================
         # EMERGENCY CONTROLS
