@@ -281,11 +281,6 @@ class DeskBuddy(Robot):
 
     def say_hello(self):
         self.speak("Hello! I'm your Robo Desk Buddy!")
-        
-        
-        self.speak("Hello! Nice to meet you!")
-        
-        print("🗣️ Hello sequence complete!")
 
 
     def patrol_mode(self):
