@@ -13,6 +13,12 @@ print("🤖 Robo Desk Buddy is alive!")
 # ==========================================
 class DeskBuddy(Robot):
     def __init__(self):
+        # ==========================================
+        # THREADING CONTROL SYSTEM
+        # ==========================================
+        self.action_lock = threading.Lock()  # Prevents multiple threads from controlling devices simultaneously
+        self.active_threads = []             # Track running threads for cleanup
+        
         """
         Initialize the DeskBuddy robot with devices and threading controls.
         
@@ -30,26 +36,52 @@ class DeskBuddy(Robot):
         # These must exist as children of the Robot in Deskworld.wbt
         self.led_left = self.getDevice("eye_led_left")    # Left LED eye
         self.led_right = self.getDevice("eye_led_right")  # Right LED eye  
+        self.speaker = self.getDevice("speaker")
+        self.speaker.setLanguage("en-US")                 # Set speaker language
         self.motor = self.getDevice("tilt_motor")         # Head tilt motor
         self.motor.setPosition(0.0)                       # Reset to neutral position
         
         # Wheel motors for actual robot movement
         self.left_wheel = self.getDevice("left_wheel_motor")   # Left wheel motor
         self.right_wheel = self.getDevice("right_wheel_motor") # Right wheel motor
-        
         # Set wheels to velocity control mode
         self.left_wheel.setPosition(float('inf'))
         self.right_wheel.setPosition(float('inf'))
         self.left_wheel.setVelocity(0.0)
         self.right_wheel.setVelocity(0.0)
-        
-        # ==========================================
-        # THREADING CONTROL SYSTEM
-        # ==========================================
-        self.action_lock = threading.Lock()  # Prevents multiple threads from controlling devices simultaneously
-        self.active_threads = []             # Track running threads for cleanup
-        
-        print("✅ DeskBuddy initialized with threading support")
+        # Movement parameters (C-style logic)
+        self.max_speed = 6.28  # Webots default max speed for e-puck wheels
+        self.turn_speed = 3.0  # Slower speed for turning
+        # --- C-style movement logic ---
+    def move_forward_c(self):
+        """Move forward at max speed (C-style logic)"""
+        with self.action_lock:
+            self.left_wheel.setVelocity(self.max_speed)
+            self.right_wheel.setVelocity(self.max_speed)
+
+    def move_backward_c(self):
+        """Move backward at max speed (C-style logic)"""
+        with self.action_lock:
+            self.left_wheel.setVelocity(-self.max_speed)
+            self.right_wheel.setVelocity(-self.max_speed)
+
+    def turn_left_c(self):
+        """Turn left in place (C-style logic)"""
+        with self.action_lock:
+            self.left_wheel.setVelocity(-self.turn_speed)
+            self.right_wheel.setVelocity(self.turn_speed)
+
+    def turn_right_c(self):
+        """Turn right in place (C-style logic)"""
+        with self.action_lock:
+            self.left_wheel.setVelocity(self.turn_speed)
+            self.right_wheel.setVelocity(-self.turn_speed)
+
+    def stop_c(self):
+        """Stop all wheel movement (C-style logic)"""
+        with self.action_lock:
+            self.left_wheel.setVelocity(0.0)
+            self.right_wheel.setVelocity(0.0)
 
     # ==========================================
     # THREADED ACTION METHODS
@@ -97,53 +129,43 @@ class DeskBuddy(Robot):
 
     def speak(self, message):
         """
-        Thread-safe speak action - prints message with visual LED feedback
-        
-        Parameters:
-        - message: The string message to "speak"
-        
-        Enhanced Features:
-        - LED eyes blink while speaking to show activity
-        - Speech timing based on message length
-        - Visual feedback enhances the speaking experience
+        Thread-safe speak action - uses Webots speaker device and LED animation
         """
         print(f"🗣️ Speaking: '{message}'")
+
+        # Speak via Webots device
+        try:
+            self.speaker.speak(message, 1.0)
+        except Exception as e:
+            print(f"⚠️ Could not use speaker device: {e}")
         
-        # Calculate speaking duration based on message length (more realistic)
+        # LED blinking for realism
         words = len(message.split())
-        speak_duration = max(1.0, words * 0.3)  # ~0.3 seconds per word, minimum 1 second
-        
-        # Blink LEDs while speaking to show activity
-        blink_interval = 0.5  # Blink every 0.5 seconds
+        speak_duration = max(1.0, words * 0.3)
+        blink_interval = 0.5
         elapsed_time = 0.0
-        
+
         while elapsed_time < speak_duration:
-            # Turn LEDs on
             with self.action_lock:
                 self.led_left.set(1)
                 self.led_right.set(1)
-            
             time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
             elapsed_time += blink_interval/2
-            
+
             if elapsed_time >= speak_duration:
                 break
-                
-            # Turn LEDs off  
+
             with self.action_lock:
                 self.led_left.set(0)
                 self.led_right.set(0)
-            
             time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
             elapsed_time += blink_interval/2
-        
-        # Ensure LEDs are off when done speaking
+
         with self.action_lock:
             self.led_left.set(0)
             self.led_right.set(0)
-        
-        print("🗣️ Speak action complete!")
 
+        print("🗣️ Speak action complete!")
     def move_forward(self, duration=2.0):
         """
         Thread-safe forward movement - moves robot straight ahead
@@ -258,18 +280,10 @@ class DeskBuddy(Robot):
         print("✨ All blinks complete!")
 
     def say_hello(self):
-        """
-        Thread-safe hello action - prints greeting messages
+        self.speak("Hello! I'm your Robo Desk Buddy!")
         
-        Note: This is a placeholder for actual movement.
-        In a real implementation, this would control wheel motors
-        to make the robot move forward while greeting.
-        """
-        print("🗣️ Hello! I'm your Robo Desk Buddy!")
         
-        for i in range(3):
-            print(f"➡️ Moving forward (step {i+1}/3)")
-            time.sleep(0.2)  # Short delay between messages
+        self.speak("Hello! Nice to meet you!")
         
         print("🗣️ Hello sequence complete!")
 
@@ -432,23 +446,23 @@ def main():
             bot.run_async(bot.patrol_mode)
         
         # ==========================================
-        # MOVEMENT CONTROLS
+        # MOVEMENT CONTROLS (C-style logic)
         # ==========================================
         elif key == ord('F'):
-            print("🔄 Starting forward movement in new thread...")
-            bot.run_async(lambda: bot.move_forward(2.0))
-            
+            print("🔄 Moving forward (C-style logic)...")
+            bot.move_forward_c()
         elif key == ord('R'):
-            print("🔄 Starting backward movement in new thread...")
-            bot.run_async(lambda: bot.move_backward(2.0))
-            
+            print("🔄 Moving backward (C-style logic)...")
+            bot.move_backward_c()
         elif key == ord('L'):
-            print("🔄 Starting left turn in new thread...")
-            bot.run_async(lambda: bot.turn('left', 1.5))
-            
+            print("🔄 Turning left (C-style logic)...")
+            bot.turn_left_c()
         elif key == ord('G'):
-            print("🔄 Starting right turn in new thread...")
-            bot.run_async(lambda: bot.turn('right', 1.5))
+            print("🔄 Turning right (C-style logic)...")
+            bot.turn_right_c()
+        elif key == ord(' '):
+            print("🔄 Stopping movement (C-style logic)...")
+            bot.stop_c()
         
         # ==========================================
         # SIMULTANEOUS ACTIONS DEMO
@@ -499,6 +513,7 @@ def main():
     print("🤖 Desk Buddy shutting down...")
     print(f"🧹 Final cleanup: {len(bot.active_threads)} threads still active")
 
+ 
 # ==========================================
 # ENTRY POINT
 # ==========================================
