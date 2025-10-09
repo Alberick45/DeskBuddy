@@ -146,12 +146,16 @@ Pose {
     }
   ]
 }
+
 Robot {
-  translation 0 0.8 0
-  rotation 0 1 0 1.5708
+  translation 0 0.775 0
+  rotation 0 1 0 0
+
 
   
+
   children [
+
 
     # --- Main Body ---
     Shape {
@@ -165,75 +169,95 @@ Robot {
       }
     }
 
+    # --- Main Body Physics ---
+    boundingObject Box {
+      size 0.25 0.3 0.25
+    }
+
     # --- Keyboard input ---
     Keyboard {
       name "keyboard"
     }
 
     # --- "Head" tilt joint (so it can nod / wave) ---
-HingeJoint {
-  jointParameters HingeJointParameters {
-    axis 0 1 0
-  }
-  device [
-    RotationalMotor {
-      name "tilt_motor"
-    }
-  ]
-  endPoint Solid {
-    translation 0 0.2 0
-    children [
-      # Head cube
-      Shape {
-        appearance PBRAppearance {
-          baseColor 0.9 0.3 0.2
-          roughness 0.4
-        }
-        geometry Box {
-          size 0.2 0.2 0.2
-        }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor 0 0.15 0
       }
-      # --- "Face" (LED Eyes) ---
-      # 👀 Eyes go on the head, slightly forward
-      Transform {
-        translation -0.06 0.05 0.11
+      device [
+        RotationalMotor {
+          name "tilt_motor"
+          maxVelocity 3.14
+        }
+      ]
+      endPoint Solid {
+        translation 0 0.2 0
+        rotation 0 1 0 1.5708
         children [
-          # Left eye
-          LED {
-            name "eye_led_left"
-            children [
-              Shape {
-                appearance PBRAppearance {
-                  baseColor 0 0 0
-                  emissiveColor 0 1 1
-                }
-                geometry Sphere {
-                  radius 0.025
-                }
-              }
-            ]
+          # Head cube
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.9 0.3 0.2
+              roughness 0.4
+            }
+            geometry Box {
+              size 0.2 0.2 0.2
+            }
           }
-
-             # --- Speaker (in the head) ---
-          Speaker {
-            name "speaker"
+          
+          # Head physics
+          boundingObject Box {
+            size 0.2 0.2 0.2
           }
-
-          # Right eye (shifted on X-axis)
+          
+          # --- "Face" (LED Eyes) ---
           Transform {
-            translation 0.12 0 0
+            translation 0 0.05 0.11
             children [
-              LED {
-                name "eye_led_right"
+              # --- Speaker (in the head) ---
+              Speaker {
+                name "speaker"
+              }
+
+              # Left eye
+              Transform {
+                translation -0.06 0 0
                 children [
-                  Shape {
-                    appearance PBRAppearance {
-                      baseColor 0 0 0
-                      emissiveColor 0 1 1
-                    }
-                    geometry Sphere {
-                      radius 0.025
-                    }
+                  LED {
+                    name "eye_led_left"
+                    children [
+                      Shape {
+                        appearance PBRAppearance {
+                          baseColor 0 0 0
+                          emissiveColor 0 1 1
+                        }
+                        geometry Sphere {
+                          radius 0.025
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+
+              # Right eye
+              Transform {
+                translation 0.06 0 0
+                children [
+                  LED {
+                    name "eye_led_right"
+                    children [
+                      Shape {
+                        appearance PBRAppearance {
+                          baseColor 0 0 0
+                          emissiveColor 0 1 1
+                        }
+                        geometry Sphere {
+                          radius 0.025
+                        }
+                      }
+                    ]
                   }
                 ]
               }
@@ -241,96 +265,85 @@ HingeJoint {
           }
         ]
       }
-    ]
-  }
-}
+    }
 
-
-    
-    
-
-# --- Little base/feet ---
     # --- Left Wheel Motor ---
-  HingeJoint {
-    jointParameters HingeJointParameters {
-  axis 1 0 0
-      anchor -0.08 -0.2 0
-    }
-    device [
-      RotationalMotor {
-        name "left_wheel_motor"
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 1 0 0
+        anchor -0.1 -0.15 0
       }
-    ]
-    endPoint Solid {
-      name "left_wheel_solid"
-      translation -0.12 -0.2 0
-  rotation 0 1 0 1.5708
-      children [
-        Shape {
-          appearance PBRAppearance {
-            baseColor 0.1 0.1 0.1
-            roughness 0.4
-            metalness 0.0
-          }
-          geometry Cylinder {
-            radius 0.05
-            height 0.04
-          }
+      device [
+        RotationalMotor {
+          name "left_wheel_motor"
+          maxVelocity 10.0
         }
       ]
-      boundingObject Cylinder {
-        radius 0.05
-        height 0.04
-      }
-      physics Physics {
-        density -1
-        mass 0.1
+      endPoint Solid {
+        name "left_wheel_solid"
+        translation -0.1 -0.15 0
+        rotation 0 0 1 1.5708
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.1 0.1 0.1
+              roughness 0.4
+              metalness 0.0
+            }
+            geometry Cylinder {
+              radius 0.05
+              height 0.04
+            }
+          }
+        ]
+        boundingObject Cylinder {
+          radius 0.05
+          height 0.04
+        }
       }
     }
-  }
 
-  # --- Right Wheel Motor ---
-  HingeJoint {
-    jointParameters HingeJointParameters {
-  axis 1 0 0
-      anchor 0.08 -0.2 0
-    }
-    device [
-      RotationalMotor {
-        name "right_wheel_motor"
+    # --- Right Wheel Motor ---
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 1 0 0
+        anchor 0.1 -0.15 0
       }
-    ]
-    endPoint Solid {
-      name "right_wheel_solid"
-      translation 0.04 -0.2 0
-  rotation 0 1 0 1.5708
-      children [
-        Shape {
-          appearance PBRAppearance {
-            baseColor 0.1 0.1 0.1
-            roughness 0.4
-            metalness 0.0
-          }
-          geometry Cylinder {
-            radius 0.05
-            height 0.04
-          }
+      device [
+        RotationalMotor {
+          name "right_wheel_motor"
+          maxVelocity 10.0
         }
       ]
-      boundingObject Cylinder {
-        radius 0.05
-        height 0.04
-      }
-      physics Physics {
-        density -1
-        mass 0.1
+      endPoint Solid {
+        name "right_wheel_solid"
+        translation 0.1 -0.15 0
+        rotation 0 0 1 1.5708
+
+        children [
+          Shape {
+            appearance PBRAppearance {
+              baseColor 0.1 0.1 0.1
+              roughness 0.4
+              metalness 0.0
+            }
+            geometry Cylinder {
+              radius 0.05
+              height 0.04
+            }
+          }
+        ]
+        boundingObject Cylinder {
+          radius 0.05
+          height 0.04
+        }
       }
     }
-  }
-
-
   ]
+
   name "RoboDeskBuddy"
   controller "desk_buddy_controller"
-  boundingObject Box { size 0.25 0.3 0.25 }
+  boundingObject Box {
+    size 0.25 0.3 0.25
+  }
 }
