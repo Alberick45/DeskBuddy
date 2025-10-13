@@ -239,16 +239,46 @@ class DeskBuddy(Robot):
         self.speak("Hello! I'm your Robo Desk Buddy!")
 
     def patrol_mode(self):
-        """Patrol with head scanning"""
-        for _ in range(5):
-            print("Patrolling...")
-            time.sleep(1.0)
-            with self.action_lock:
-                self.motor.setPosition(0.7)
+        """Patrol mode: Robot moves in a square pattern while scanning head"""
+        print("Starting patrol mode...")
+        
+        patrol_cycles = 3  # Number of complete squares to patrol
+        
+        for cycle in range(patrol_cycles):
+            print(f"Patrol cycle {cycle + 1}/{patrol_cycles}")
+            
+            # Move forward while scanning head
+            print("Moving forward and scanning...")
+            self.move_forward()
+            time.sleep(2.0)
+            
+            # Scan head while moving forward
+            for _ in range(4):
+                with self.action_lock:
+                    self.motor.setPosition(0.7)
+                time.sleep(0.3)
+                with self.action_lock:
+                    self.motor.setPosition(-0.7)
+                time.sleep(0.3)
+            
+            # Stop movement
+            self.stop_all_actions()
             time.sleep(0.5)
+            
+            # Turn right using the turn_right_c method
+            print("Turning right...")
+            self.turn('right', 2.0)
+            time.sleep(2.0)
+            
+            # Reset head to center
             with self.action_lock:
-                self.motor.setPosition(-0.7)
-            time.sleep(0.5)
+                self.motor.setPosition(0.0)
+        
+        # Final stop and center head
+        print("Patrol complete!")
+        self.stop_all_actions()
+        with self.action_lock:
+            self.motor.setPosition(0.0)
 
     def dance_sequence(self):
         """Dance with lights and head movement"""
