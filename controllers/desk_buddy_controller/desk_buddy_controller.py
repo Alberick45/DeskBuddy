@@ -28,6 +28,13 @@ class DeskBuddy(Robot):
         self.left_wheel.setVelocity(0.0)
         self.right_wheel.setVelocity(0.0)
         
+        self.left_rear_wheel = self.getDevice("left_rear_wheel_motor")
+        self.right_rear_wheel = self.getDevice("right_rear_wheel_motor")
+        self.left_rear_wheel.setPosition(float('inf'))
+        self.right_rear_wheel.setPosition(float('inf'))
+        self.left_rear_wheel.setVelocity(0.0)
+        self.right_rear_wheel.setVelocity(0.0)
+        
         # Movement parameters
         self.max_speed = 6.28
         self.turn_speed = 3.0
@@ -40,53 +47,72 @@ class DeskBuddy(Robot):
         with self.action_lock:
             self.left_wheel.setVelocity(self.max_speed)
             self.right_wheel.setVelocity(self.max_speed)
+            self.left_rear_wheel.setVelocity(self.max_speed)
+            self.right_rear_wheel.setVelocity(self.max_speed)
 
     def move_backward_c(self):
         """Move backward at max speed"""
         with self.action_lock:
             self.left_wheel.setVelocity(-self.max_speed)
             self.right_wheel.setVelocity(-self.max_speed)
+            self.left_rear_wheel.setVelocity(-self.max_speed)
+            self.right_rear_wheel.setVelocity(-self.max_speed)
 
     def turn_left_c(self):
         """Turn left in place"""
         with self.action_lock:
             self.left_wheel.setVelocity(-self.turn_speed)
             self.right_wheel.setVelocity(self.turn_speed)
+            self.left_rear_wheel.setVelocity(-self.turn_speed)
+            self.right_rear_wheel.setVelocity(self.turn_speed)
 
     def turn_right_c(self):
         """Turn right in place"""
         with self.action_lock:
             self.left_wheel.setVelocity(self.turn_speed)
             self.right_wheel.setVelocity(-self.turn_speed)
+            self.left_rear_wheel.setVelocity(self.turn_speed)
+            self.right_rear_wheel.setVelocity(-self.turn_speed)
 
     def stop_c(self):
         """Stop all wheel movement"""
         with self.action_lock:
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
+            self.left_rear_wheel.setVelocity(0.0)
+            self.right_rear_wheel.setVelocity(0.0)
 
     # ==========================================
     # THREADED ACTIONS
     # ==========================================
     def turn(self, direction, duration):
-        """Turn robot left or right for specified duration"""
+        """Turn robot left or right for specified duration - FIXED TO CONTROL ALL 4 WHEELS"""
         print(f"Turning {direction} for {duration} seconds...")
         
         turn_speed = 2.0
         
         with self.action_lock:
             if direction.lower() == 'left':
+                # Left side wheels backward, right side wheels forward
                 self.left_wheel.setVelocity(-turn_speed)
                 self.right_wheel.setVelocity(turn_speed)
+                self.left_rear_wheel.setVelocity(-turn_speed)
+                self.right_rear_wheel.setVelocity(turn_speed)
             elif direction.lower() == 'right':
+                # Left side wheels forward, right side wheels backward
                 self.left_wheel.setVelocity(turn_speed)
                 self.right_wheel.setVelocity(-turn_speed)
+                self.left_rear_wheel.setVelocity(turn_speed)
+                self.right_rear_wheel.setVelocity(-turn_speed)
         
         time.sleep(duration)
         
+        # Stop all wheels
         with self.action_lock:
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
+            self.left_rear_wheel.setVelocity(0.0)
+            self.right_rear_wheel.setVelocity(0.0)
         
         print(f"Turn {direction} complete!")
 
@@ -136,12 +162,16 @@ class DeskBuddy(Robot):
         with self.action_lock:
             self.left_wheel.setVelocity(move_speed)
             self.right_wheel.setVelocity(move_speed)
+            self.left_rear_wheel.setVelocity(move_speed)
+            self.right_rear_wheel.setVelocity(move_speed)
         
         time.sleep(duration)
         
         with self.action_lock:
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
+            self.left_rear_wheel.setVelocity(0.0)
+            self.right_rear_wheel.setVelocity(0.0)
         
         print("Forward movement complete!")
 
@@ -154,12 +184,16 @@ class DeskBuddy(Robot):
         with self.action_lock:
             self.left_wheel.setVelocity(-move_speed)
             self.right_wheel.setVelocity(-move_speed)
+            self.left_rear_wheel.setVelocity(-move_speed)
+            self.right_rear_wheel.setVelocity(-move_speed)
         
         time.sleep(duration)
         
         with self.action_lock:
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
+            self.left_rear_wheel.setVelocity(0.0)
+            self.right_rear_wheel.setVelocity(0.0)
         
         print("Backward movement complete!")
 
@@ -260,6 +294,8 @@ class DeskBuddy(Robot):
             self.led_right.set(0)
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
+            self.left_rear_wheel.setVelocity(0.0)
+            self.right_rear_wheel.setVelocity(0.0)
         
         print(f"Active threads: {len(self.active_threads)}")
 

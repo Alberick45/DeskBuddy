@@ -171,15 +171,15 @@ Robot {
     }
     DEF LEFT_REAR_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
-        anchor 0.1 -0.15 -0.1
+        anchor -0.1 -0.15 -0.1
       }
       device [
         RotationalMotor {
-          name "left__rear_wheel_motor"
+          name "left_rear_wheel_motor"
         }
       ]
       endPoint Solid {
-        translation 0.1 -0.15 -0.1
+        translation -0.1 -0.15 -0.1
         rotation 0 1 0 1.5708
         children [
           USE WHEEL_SHAPE
@@ -195,7 +195,7 @@ Robot {
     }
     DEF RIGHT_REAR_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
-        anchor -0.1 -0.15 -0.1
+        anchor 0.1 -0.15 -0.1
       }
       device [
         RotationalMotor {
@@ -203,7 +203,7 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation -0.1 -0.15 -0.1
+        translation 0.1 -0.15 -0.1
         rotation 0 1 0 1.5708
         children [
           USE WHEEL_SHAPE
