@@ -24,10 +24,12 @@ TexturedBackgroundLight {
 RectangleArena {
   floorSize 3 3
 }
+
 Robot {
   translation -0.0678017 0.774844 0.29714
   rotation -0.9910285795542866 0.09307916051099348 -0.09590945931023395 -1.5963153071795864
   children [
+    
     Shape {
       appearance PBRAppearance {
         baseColor 0.2 0.6 0.9

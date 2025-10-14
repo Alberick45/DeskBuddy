@@ -1,8 +1,75 @@
 import threading
 import time
+import requests
 from controller import Robot, Keyboard
+from flask import Flask, request, jsonify
 
 TIME_STEP = 32
+
+
+# ==========================================
+# FLASK APP SETUP
+# ==========================================
+app = Flask(__name__)
+robot_instance = None  # Shared between Webots and Flask
+
+
+@app.route("/command", methods=["POST"])
+def handle_command():
+    """Main endpoint to receive robot and task commands."""
+    global robot_instance
+    if not robot_instance:
+        return jsonify({"error": "Robot not initialized"}), 503
+
+    data = request.get_json(force=True)
+    action = data.get("action")
+    duration = float(data.get("duration", 2.0))
+    message = data.get("message", "")
+    print(f"[API] Received: {action}, duration={duration}, message={message}")
+
+    # ====== ROBOT MOVEMENT & ACTIONS ======
+    if action == "forward":
+        robot_instance.run_async(lambda: robot_instance.move_forward(duration))
+    elif action == "backward":
+        robot_instance.run_async(lambda: robot_instance.move_backward(duration))
+    elif action == "turn_left":
+        robot_instance.run_async(lambda: robot_instance.turn("left", duration))
+    elif action == "turn_right":
+        robot_instance.run_async(lambda: robot_instance.turn("right", duration))
+    elif action == "speak":
+        robot_instance.run_async(lambda: robot_instance.speak(message))
+    elif action == "blink":
+        robot_instance.run_async(robot_instance.blink_lights)
+    elif action == "wave":
+        robot_instance.run_async(robot_instance.wave)
+    elif action == "stop":
+        robot_instance.stop_all_actions()
+
+    # ====== TASK COMMANDS ======
+    elif action == "add_task":
+        robot_instance.add_task(message)
+    elif action == "list_tasks":
+        tasks = robot_instance.list_tasks()
+        return jsonify({"tasks": tasks}), 200
+    elif action == "remove_task":
+        index = int(data.get("index", -1))
+        removed = robot_instance.remove_task(index)
+        return jsonify({"removed": removed}), 200
+    elif action == "clear_tasks":
+        robot_instance.clear_tasks()
+        return jsonify({"status": "All tasks cleared"}), 200
+
+    else:
+        return jsonify({"error": f"Unknown action '{action}'"}), 400
+
+    return jsonify({"status": f"Action '{action}' executed"}), 200
+
+
+def start_api_server():
+    """Run Flask API in a background thread."""
+    print("🚀 Starting local control API on http://localhost:8000/command")
+    app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+    
 
 class DeskBuddy(Robot):
     def __init__(self):
@@ -12,6 +79,10 @@ class DeskBuddy(Robot):
         self.action_lock = threading.Lock()
         self.active_threads = []
         
+        # Task management
+        self.tasks = []
+        self.api_url = "http://localhost:5000/api/tasks"  # your external task API
+
         # Get devices from world file
         self.led_left = self.getDevice("eye_led_left")
         self.led_right = self.getDevice("eye_led_right")
@@ -39,6 +110,66 @@ class DeskBuddy(Robot):
         self.max_speed = 6.28
         self.turn_speed = 3.0
 
+
+
+    # ========================
+    # TASK MANAGEMENT
+    # ========================
+    def add_task(self, task):
+        """Add a task and sync to external API."""
+        if not task:
+            print("⚠️ No task provided.")
+            return
+
+        with self.action_lock:
+            self.tasks.append(task)
+        print(f"✅ Task added: {task}")
+
+        self.run_async(lambda: self.speak(f"Task added: {task}"))
+        self.send_task_to_api(task)
+
+    def list_tasks(self):
+        """List all current tasks."""
+        with self.action_lock:
+            if not self.tasks:
+                self.run_async(lambda: self.speak("You have no tasks."))
+                return []
+            self.run_async(lambda: self.speak(f"You have {len(self.tasks)} tasks."))
+            for i, task in enumerate(self.tasks, start=1):
+                print(f"{i}. {task}")
+            return self.tasks
+
+    def remove_task(self, index):
+        """Remove a task by index."""
+        with self.action_lock:
+            if 0 <= index < len(self.tasks):
+                removed = self.tasks.pop(index)
+                print(f"🗑️ Removed task: {removed}")
+                self.run_async(lambda: self.speak(f"Removed task: {removed}"))
+                return removed
+            else:
+                print("⚠️ Invalid index for removal.")
+                self.run_async(lambda: self.speak("Invalid task number."))
+                return None
+
+    def clear_tasks(self):
+        """Clear all tasks."""
+        with self.action_lock:
+            self.tasks.clear()
+        print("🧹 All tasks cleared.")
+        self.run_async(lambda: self.speak("All tasks cleared."))
+
+    def send_task_to_api(self, task):
+        """Send the task to an external API."""
+        try:
+            payload = {"task": task}
+            response = requests.post(self.api_url, json=payload, timeout=5)
+            if response.status_code == 200:
+                print(f"🌐 Synced task successfully: {response.json()}")
+            else:
+                print(f"⚠️ API sync failed ({response.status_code})")
+        except Exception as e:
+            print(f"🚫 Could not reach API: {e}")
     # ==========================================
     # DIRECT MOVEMENT CONTROL (No threading)
     # ==========================================
@@ -332,9 +463,16 @@ class DeskBuddy(Robot):
 
 def main():
     """Main control loop"""
+    global robot_instance
     bot = DeskBuddy()
+    robot_instance = bot
+
     keyboard = bot.getKeyboard()
     keyboard.enable(TIME_STEP)
+
+    # Start Flask API server in background thread
+    api_thread = threading.Thread(target=start_api_server, daemon=True)
+    api_thread.start()
 
     print("=" * 60)
     print("DESKBUDDY ROBOT CONTROLS:")

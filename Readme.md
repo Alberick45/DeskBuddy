@@ -143,3 +143,18 @@ Viewpoint editing can also be done in **VS Code** by adjusting the `Viewpoint` n
 * Devices must be declared in the **world file** before you can use them in the controller.
 * Use `robot.getDevice("device_name")` in Python to access motors, LEDs, sensors, etc.
 * Save + reload the world after making edits.
+
+Shape {
+      appearance PBRAppearance {
+        baseColor 0.2 0.6 0.9
+        roughness 0.3
+        metalness 0.1
+      }
+      geometry Box {
+        size 0.25 0.3 0.25
+      }
+    }
+
+CadShape {
+        url "models/baymax_body.obj"
+      } within children within endpoint solid
