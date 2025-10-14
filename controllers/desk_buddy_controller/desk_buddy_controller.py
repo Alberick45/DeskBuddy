@@ -88,8 +88,8 @@ class DeskBuddy(Robot):
         self.led_right = self.getDevice("eye_led_right")
         self.speaker = self.getDevice("speaker")
         self.speaker.setLanguage("en-US")
-        self.motor = self.getDevice("tilt_motor")
-        self.motor.setPosition(0.0)
+        self.head_motor = self.getDevice("tilt_motor")
+        self.head_motor.setPosition(0.0)
 
         #hands 
         self.left_hand_motor = self.getDevice("left_arm_motor")
@@ -105,6 +105,14 @@ class DeskBuddy(Robot):
         self.right_wheel.setPosition(float('inf'))
         self.left_wheel.setVelocity(0.0)
         self.right_wheel.setVelocity(0.0)
+        #legs
+        self.left_leg = self.getDevice("left_leg_motor")
+        self.right_leg = self.getDevice("right_leg_motor")
+        self.left_leg.setPosition(float('inf'))
+        self.right_leg.setPosition(float('inf'))
+        self.left_leg.setVelocity(0.0)
+        self.right_leg.setVelocity(0.0)
+        #end
         
         self.left_rear_wheel = self.getDevice("left_rear_wheel_motor")
         self.right_rear_wheel = self.getDevice("right_rear_wheel_motor")
@@ -340,17 +348,17 @@ class DeskBuddy(Robot):
         print("Waving...")
         
         with self.action_lock:
-            self.motor.setPosition(0.5)
+            self.head_motor.setPosition(0.2)
             self.right_hand_motor.setPosition(0.5)
         time.sleep(0.5)
         
         with self.action_lock:
-            self.motor.setPosition(-0.5)
+            self.head_motor.setPosition(-0.2)
             self.right_hand_motor.setPosition(-0.5)
         time.sleep(0.5)
         
         with self.action_lock:
-            self.motor.setPosition(0.0)
+            self.head_motor.setPosition(0.2)
             self.right_hand_motor.setPosition(0.0)
         time.sleep(0.5)
         
@@ -396,10 +404,10 @@ class DeskBuddy(Robot):
             # Scan head while moving forward
             for _ in range(4):
                 with self.action_lock:
-                    self.motor.setPosition(0.7)
+                    self.head_motor.setPosition(0.7)
                 time.sleep(0.3)
                 with self.action_lock:
-                    self.motor.setPosition(-0.7)
+                    self.head_motor.setPosition(-0.7)
                 time.sleep(0.3)
             
             # Stop movement
@@ -413,19 +421,19 @@ class DeskBuddy(Robot):
             
             # Reset head to center
             with self.action_lock:
-                self.motor.setPosition(0.0)
+                self.head_motor.setPosition(0.0)
         
         # Final stop and center head
         print("Patrol complete!")
         self.stop_all_actions()
         with self.action_lock:
-            self.motor.setPosition(0.0)
+            self.head_motor.setPosition(0.0)
 
     def dance_sequence(self):
         """Dance with lights and head movement"""
         for beat in range(4):
             with self.action_lock:
-                self.motor.setPosition(0.5 if beat % 2 == 0 else -0.5)
+                self.head_motor.setPosition(0.5 if beat % 2 == 0 else -0.5)
                 self.led_left.set(beat % 2)
                 self.led_right.set((beat + 1) % 2)
             time.sleep(0.8)
@@ -460,7 +468,7 @@ class DeskBuddy(Robot):
         print("Stopping all actions...")
         
         with self.action_lock:
-            self.motor.setPosition(0.0)
+            self.head_motor.setPosition(0.0)
             self.led_left.set(0)
             self.led_right.set(0)
             self.left_wheel.setVelocity(0.0)

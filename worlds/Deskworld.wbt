@@ -197,7 +197,78 @@ Robot {
 
 
 
-    
+    DEF LEFT_LEG HingeJoint {
+      jointParameters HingeJointParameters {
+        position 3.684810182907936e-15
+        axis 0 0 1
+        anchor -0.1 -0.1 0
+      }
+      device [
+        RotationalMotor {
+          name "left_leg_motor"
+        }
+      ]
+      endPoint Solid {
+        translation -0.1 -0.04 0
+        children [
+          Transform {
+            scale 0.2 0.2 0.2
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_left_leg.obj"
+                ]
+              }
+            ]
+          }
+        ]
+        name "left_leg_solid"
+        boundingObject Box {
+          size 0.05 0.15 0.05
+        }
+        physics Physics {
+        }
+        linearVelocity -5.374647991771324e-18 -1.9003300553737364e-17 -0.47088
+        angularVelocity -1.376943401160281e-15 -6.017776469644084e-15 -1.8376422421349625e-15
+      }
+    }
+    DEF RIGHT_LEG HingeJoint {
+      jointParameters HingeJointParameters {
+        position 3.679384173289797e-15
+        axis 0 0 1
+        anchor 0.1 -0.1 0
+      }
+      device [
+        RotationalMotor {
+          name "right_leg_motor"
+        }
+      ]
+      endPoint Solid {
+        translation 0.16 -0.04 0
+        children [
+          Transform {
+            scale 0.2 0.2 0.2
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_right_leg.obj"
+                ]
+              }
+            ]
+          }
+        ]
+        name "right_leg_solid"
+        boundingObject Box {
+          size 0.05 0.15 0.05
+        }
+        physics Physics {
+        }
+      }
+    }
+
+
+
+
     DEF WHEEL_SHAPE Shape {
       appearance PBRAppearance {
         baseColor 0.1 0.1 0.1
