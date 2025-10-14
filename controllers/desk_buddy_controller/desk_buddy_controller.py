@@ -90,6 +90,13 @@ class DeskBuddy(Robot):
         self.speaker.setLanguage("en-US")
         self.motor = self.getDevice("tilt_motor")
         self.motor.setPosition(0.0)
+
+        #hands 
+        self.left_hand_motor = self.getDevice("left_arm_motor")
+        self.left_hand_motor.setPosition(0.0)
+
+        self.right_hand_motor = self.getDevice("right_arm_motor")
+        self.right_hand_motor.setPosition(0.0)
         
         # Wheel motors
         self.left_wheel = self.getDevice("left_wheel_motor")
@@ -334,14 +341,17 @@ class DeskBuddy(Robot):
         
         with self.action_lock:
             self.motor.setPosition(0.5)
+            self.right_hand_motor.setPosition(0.5)
         time.sleep(0.5)
         
         with self.action_lock:
             self.motor.setPosition(-0.5)
+            self.right_hand_motor.setPosition(-0.5)
         time.sleep(0.5)
         
         with self.action_lock:
             self.motor.setPosition(0.0)
+            self.right_hand_motor.setPosition(0.0)
         time.sleep(0.5)
         
         print("Wave complete!")

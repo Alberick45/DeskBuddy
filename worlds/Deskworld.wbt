@@ -13,8 +13,8 @@ WorldInfo {
   lineScale 0.2
 }
 Viewpoint {
-  orientation -0.01855211503117423 -0.13841742240261853 0.9902002000622324 1.620897267863362
-  position -0.4239763877573109 -3.3326682394485783 0.235529302805811
+  orientation -0.2611073914096053 0.1312020182425574 0.9563519020529788 1.2331884797760606
+  position -0.38597156438235386 -1.1499449249272315 1.0830618928777884
   description "Default View"
 }
 TexturedBackground {
@@ -24,20 +24,27 @@ TexturedBackgroundLight {
 RectangleArena {
   floorSize 3 3
 }
-
 Robot {
-  translation -0.0678017 0.774844 0.29714
-  rotation -0.9910285795542866 0.09307916051099348 -0.09590945931023395 -1.5963153071795864
+  translation -0.0280498 0.777614 0.68105584
+  rotation 0.989749127493356 -0.10098679188584402 -0.10098679364523701 1.5810999191982658
   children [
-    
-    Shape {
-      appearance PBRAppearance {
-        baseColor 0.2 0.6 0.9
-        roughness 0.3
-        metalness 0.1
-      }
-      geometry Box {
+    Solid {
+      children [
+        Transform {
+          scale 0.3 0.3 0.3
+          children [
+            CadShape {
+              url [
+                "../models/baymax_body.obj"
+              ]
+            }
+          ]
+        }
+      ]
+      boundingObject Box {
         size 0.25 0.3 0.25
+      }
+      physics Physics {
       }
     }
     DEF HEAD HingeJoint {
@@ -52,27 +59,30 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation 0 0.2 0
-        rotation 0 1 0 1.5708
+        translation 0.01 0.01999999999999999 0.01
+        rotation 0 1 0 5.307156870259904e-06
         children [
-          Shape {
-            appearance PBRAppearance {
-              baseColor 0.9 0.3 0.2
-              roughness 0.4
-            }
-            geometry Box {
-              size 0.2 0.2 0.2
-            }
+          Transform {
+            scale 0.25 0.25 0.25
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_head.obj"
+                ]
+              }
+            ]
           }
           Pose {
-            translation 0 0.05 0.11
+            translation 0.2 0.17 -0.01
+            rotation 0 1 0 1.309
             children [
               Speaker {
               }
               Pose {
-                translation -0.11 -0.03 -0.15
+                translation -0.11 -0.025 -0.12
                 children [
                   LED {
+                    translation -0.01 0 0
                     children [
                       Shape {
                         appearance PBRAppearance {
@@ -91,7 +101,7 @@ Robot {
                 translation 0.04 -0.04 0
                 children [
                   LED {
-                    translation -0.13 0.01 -0.06
+                    translation -0.145 0.015 -0.079
                     children [
                       Shape {
                         appearance PBRAppearance {
@@ -112,6 +122,82 @@ Robot {
         name "head_solid"
       }
     }
+    DEF LEFT_ARM HingeJoint {
+      jointParameters HingeJointParameters {
+        position 3.6869316894451024e-15
+        axis 1 0 0
+        anchor -0.1 0.1 0
+      }
+      device [
+        RotationalMotor {
+          name "left_arm_motor"
+        }
+      ]
+      endPoint Solid {
+        translation 0.04999999999999996 0.040000000000000036 -1.1102230246251565e-16
+        rotation -0.9852630362045038 0.041484759419137006 0.16593903767654802 3.345273782981758e-16
+        children [
+          Transform {
+            scale 0.2 0.2 0.2
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_left_arm.obj"
+                ]
+              }
+            ]
+          }
+        ]
+        name "left_arm_solid"
+        boundingObject Box {
+          size 0.05 0.15 0.05
+        }
+        physics Physics {
+        }
+        linearVelocity -3.961449941735589e-20 -1.0025833119920712e-17 -0.47088
+        angularVelocity -1.3776904379277038e-16 -8.558289971813655e-18 -1.0291878770899561e-16
+      }
+    }
+    DEF RIGHT_ARM HingeJoint {
+      jointParameters HingeJointParameters {
+        position 3.6782707335673524e-15
+        axis 1 0 0
+        anchor 0.1 0.1 0
+      }
+      device [
+        RotationalMotor {
+          name "right_arm_motor"
+        }
+      ]
+      endPoint Solid {
+        translation -0.009999999999999815 0.03999999999999959 6.550315845288424e-14
+        rotation -1 9.394698259392191e-11 1.0759699365532345e-08 5.307156870259904e-06
+        children [
+          Transform {
+            scale 0.2 0.2 0.2
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_right_arm.obj"
+                ]
+              }
+            ]
+          }
+        ]
+        name "right_arm_solid"
+        boundingObject Box {
+          size 0.05 0.15 0.05
+        }
+        physics Physics {
+        }
+        linearVelocity 2.3348828004652885e-18 1.4878338456237017e-18 -0.47088
+        angularVelocity 1.8222015532181605e-15 -4.127318770726384e-16 9.379153356481988e-16
+      }
+    }
+
+
+
+    
     DEF WHEEL_SHAPE Shape {
       appearance PBRAppearance {
         baseColor 0.1 0.1 0.1
@@ -125,6 +211,7 @@ Robot {
     }
     DEF LEFT_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
+        position -7.039204577113594
         anchor -0.1 -0.15 0.1
       }
       device [
@@ -133,8 +220,8 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation -0.1 -0.15 0.1
-        rotation 0 1 0 1.5708
+        translation -0.10000000000000006 -0.15000000000000002 0.10000000000000009
+        rotation 0.3462413484585384 -0.8719133996686665 0.3462426202763624 4.575747335081175
         children [
           USE WHEEL_SHAPE
         ]
@@ -145,10 +232,13 @@ Robot {
         }
         physics Physics {
         }
+        linearVelocity -5.374647991771324e-18 -1.9003300553737364e-17 -0.47088
+        angularVelocity -1.376943401160281e-15 -6.017776469644084e-15 -1.8376422421349625e-15
       }
     }
     DEF RIGHT_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
+        position 7.10322381390476
         anchor 0.1 -0.15 0.1
       }
       device [
@@ -157,8 +247,8 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation 0.1 -0.15 0.1
-        rotation 0 1 0 1.5708
+        translation 0.10000000000000002 -0.15000000000000002 0.10000000000000009
+        rotation -0.37028974673578946 -0.8519213576508416 -0.37029110688847466 4.55280593566878
         children [
           USE WHEEL_SHAPE
         ]
@@ -169,10 +259,13 @@ Robot {
         }
         physics Physics {
         }
+        linearVelocity -1.8300414882275542e-16 -3.916288546879289e-17 -0.47088
+        angularVelocity -9.249872878761107e-16 -3.8260729134291465e-15 1.978749405013943e-15
       }
     }
     DEF LEFT_REAR_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
+        position -7.103220315059178
         anchor -0.1 -0.15 -0.1
       }
       device [
@@ -181,8 +274,8 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation -0.1 -0.15 -0.1
-        rotation 0 1 0 1.5708
+        translation -0.10000000000000006 -0.15000000000000002 -0.09999999999999998
+        rotation 0.37028846071974003 -0.8519224755924513 0.37028982086770185 4.552807231253175
         children [
           USE WHEEL_SHAPE
         ]
@@ -193,10 +286,13 @@ Robot {
         }
         physics Physics {
         }
+        linearVelocity 1.8825728446845433e-16 -2.3160453766839757e-17 -0.47087999999999997
+        angularVelocity -2.74881562309586e-16 -6.73468005842675e-16 -1.0291876615819379e-16
       }
     }
     DEF RIGHT_REAR_WHEEL HingeJoint {
       jointParameters HingeJointParameters {
+        position 7.167191132585327
         anchor 0.1 -0.15 -0.1
       }
       device [
@@ -205,8 +301,8 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation 0.1 -0.15 -0.1
-        rotation 0 1 0 1.5708
+        translation 0.09999999999999999 -0.15000000000000002 -0.09999999999999998
+        rotation -0.39328051936359276 -0.8310594021536286 -0.39328196396625664 4.528378607129886
         children [
           USE WHEEL_SHAPE
         ]
@@ -217,6 +313,8 @@ Robot {
         }
         physics Physics {
         }
+        linearVelocity -1.6284456393649746e-16 1.344458688612703e-15 -0.47087999999999997
+        angularVelocity 1.742627603627448e-16 1.5046001636203787e-15 -1.0291876615819416e-16
       }
     }
   ]
@@ -227,4 +325,6 @@ Robot {
   physics Physics {
   }
   controller "desk_buddy_controller"
+  linearVelocity 1.3423087250793223e-18 -1.0496610314182917e-17 -0.4708800000000001
+  angularVelocity -1.37769483695062e-16 -8.560432717560162e-18 -1.0291876616483369e-16
 }
