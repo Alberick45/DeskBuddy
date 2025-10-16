@@ -13,8 +13,8 @@ WorldInfo {
   lineScale 0.2
 }
 Viewpoint {
-  orientation -0.15636992635959568 -0.012635077996551116 0.9876177402893872 1.3529065070444732
-  position -0.6532219956069197 -1.6306445509941523 1.0450312202216616
+  orientation 0.30544545223972824 -0.11888931700419249 -0.9447583849896991 4.49925579200068
+  position 0.3303014132254629 -1.315847519212392 1.6113684888764879
   description "Default View"
 }
 TexturedBackground {
@@ -31,7 +31,8 @@ Robot {
     Solid {
       children [
         Transform {
-          translation -0.05 0 0
+          translation 0.03 -0.28 0
+          rotation 0 1 0 4.692820414042842e-06
           scale 0.3 0.3 0.3
           children [
             CadShape {
@@ -64,8 +65,8 @@ Robot {
         rotation 0 1 0 5.307156870259904e-06
         children [
           Transform {
-            translation -0.05 0 0
-            scale 0.25 0.25 0.25
+            translation 0.02 -0.305 0
+            scale 0.3 0.3 0.3
             children [
               CadShape {
                 url [
@@ -75,13 +76,13 @@ Robot {
             ]
           }
           Pose {
-            translation 0.2 0.17 -0.01
+            translation 0.19 0.2 -0.02
             rotation 0 1 0 1.309
             children [
               Speaker {
               }
               Pose {
-                translation -0.12 -0.025 -0.18
+                translation -0.12 -0.026 -0.2
                 children [
                   LED {
                     translation -0.01 0 0
@@ -100,7 +101,7 @@ Robot {
                 ]
               }
               Pose {
-                translation 0.03 -0.04 -0.05
+                translation 0.03 -0.045 -0.07
                 children [
                   LED {
                     translation -0.145 0.015 -0.079
@@ -139,8 +140,8 @@ Robot {
         rotation -1 0 0 3.332000937312532e-07
         children [
           Transform {
-            translation -0.05 0 0
-            scale 0.2 0.2 0.2
+            translation -0.029 -0.3172 0
+            scale 0.3 0.3 0.3
             children [
               CadShape {
                 url [
@@ -169,12 +170,12 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation -0.009999999999999565 0.040000000000001416 1.4757482306976723e-08
-        rotation -0.9999999999999998 8.978698048747822e-11 1.0283111628949546e-08 5.552837294422497e-06
+        translation -0.009999999999999565 0.04000000000000139 1.4757482306976733e-08
+        rotation -0.9999999999999998 8.97868339310049e-11 1.0283094844148824e-08 5.5525173844527986e-06
         children [
           Transform {
-            translation -0.05 0 0
-            scale 0.2 0.2 0.2
+            translation 0.05 -0.3172 0
+            scale 0.3 0.3 0.3
             children [
               CadShape {
                 url [
@@ -185,75 +186,6 @@ Robot {
           }
         ]
         name "right_arm_solid"
-        boundingObject Box {
-          size 0.05 0.15 0.05
-        }
-        physics Physics {
-        }
-      }
-    }
-    DEF LEFT_LEG HingeJoint {
-      jointParameters HingeJointParameters {
-        position 6.826450078083066e-10
-        axis 0 0 1
-        anchor -0.1 -0.1 0
-      }
-      device [
-        RotationalMotor {
-          name "left_leg_motor"
-        }
-      ]
-      endPoint Solid {
-        translation -0.1000000000409587 -0.04 0
-        children [
-          Transform {
-            translation -0.05 0 0
-            scale 0.2 0.2 0.2
-            children [
-              CadShape {
-                url [
-                  "../models/baymax_left_leg.obj"
-                ]
-              }
-            ]
-          }
-        ]
-        name "left_leg_solid"
-        boundingObject Box {
-          size 0.05 0.15 0.05
-        }
-        physics Physics {
-        }
-      }
-    }
-    DEF RIGHT_LEG HingeJoint {
-      jointParameters HingeJointParameters {
-        position -1.6285967083558393e-05
-        axis 0 0 1
-        anchor 0.1 -0.1 0
-      }
-      device [
-        RotationalMotor {
-          name "right_leg_motor"
-        }
-      ]
-      endPoint Solid {
-        translation 0.16000097715006784 -0.0400009771659822 0
-        rotation 0 0 -1 1.6285953474832705e-05
-        children [
-          Transform {
-            translation -0.05 0 0
-            scale 0.2 0.2 0.2
-            children [
-              CadShape {
-                url [
-                  "../models/baymax_right_leg.obj"
-                ]
-              }
-            ]
-          }
-        ]
-        name "right_leg_solid"
         boundingObject Box {
           size 0.05 0.15 0.05
         }
@@ -284,10 +216,21 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation -0.10000000000000006 -0.15000000000000002 0.10000000000000009
-        rotation 0.34624134664236844 -0.8719134011110931 0.3462426184601857 4.575747336720079
+        translation -0.05 -0.15 0.1
+        rotation -0.346241116908506 0.8719132944020095 -0.3462431169091813 1.70744
         children [
-          USE WHEEL_SHAPE
+          Transform {
+            translation -8.15518e-08 -0.09 -0.08
+            rotation 0 1 0 -1.5707953071795862
+            scale 0.3 0.3 0.3
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_left_wheel.obj"
+                ]
+              }
+            ]
+          }
         ]
         name "left_wheel_solid"
         boundingObject Cylinder {
@@ -312,7 +255,18 @@ Robot {
         translation 0.10000000000000002 -0.15000000000000002 0.1000000000000001
         rotation -0.3702897468048841 -0.8519213575907775 -0.3702911069575683 4.5528059355991735
         children [
-          USE WHEEL_SHAPE
+          Transform {
+            translation -0.0633017 -0.0703612 -0.0999994
+            rotation 0.44721312362157567 0.7745972141192264 -0.44721312362157567 1.82348
+            scale 0.3 0.3 0.3
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_right_wheel.obj"
+                ]
+              }
+            ]
+          }
         ]
         name "right_wheel_solid"
         boundingObject Cylinder {
@@ -337,7 +291,18 @@ Robot {
         translation -0.10000000000000006 -0.15000000000000002 -0.09999999999999999
         rotation 0.3702884589791945 -0.8519224771055149 0.37028981912714926 4.552807233006666
         children [
-          USE WHEEL_SHAPE
+          Transform {
+            translation 0.06364 -0.0687865 0.0699999
+            rotation 0.3574058186283875 -0.8628565621288802 -0.35740681862788 -1.7177753071795863
+            scale 0.3 0.3 0.3
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_left_wheel.obj"
+                ]
+              }
+            ]
+          }
         ]
         name "left_rear_wheel_solid"
         boundingObject Cylinder {
@@ -362,7 +327,18 @@ Robot {
         translation 0.09999999999999999 -0.15000000000000002 -0.09999999999999998
         rotation -0.3932805194294137 -0.8310594020913323 -0.3932819640320764 4.528378607056194
         children [
-          USE WHEEL_SHAPE
+          Transform {
+            translation 1.22354e-07 -0.09 0.12
+            rotation 0 1 0 -1.5707953071795862
+            scale 0.3 0.3 0.3
+            children [
+              CadShape {
+                url [
+                  "../models/baymax_right_wheel.obj"
+                ]
+              }
+            ]
+          }
         ]
         name "right_rear_wheel_solid"
         boundingObject Cylinder {
