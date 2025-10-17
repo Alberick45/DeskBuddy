@@ -48,7 +48,7 @@ def handle_command():
     elif action == "wave":
         robot_instance.run_async(robot_instance.wave)
     elif action == "stop":
-        robot_instance.stop_all_actions()
+        robot_instance.stop_all()
 
     # ====== TASK COMMANDS ======
     elif action == "add_task":
@@ -62,7 +62,7 @@ def handle_command():
         return jsonify({"status": "Task added", "task": task}), 200
         
     elif action == "list_tasks":
-        tasks = robot_instance.list_tasks()
+        tasks = robot_instance.get_tasks()
         return jsonify({"tasks": tasks}), 200
         
     elif action == "remove_task":
@@ -83,7 +83,7 @@ def handle_command():
 def start_api_server():
     """Run Flask API in a background thread."""
     print("🚀 Starting local control API on http://localhost:8000/command")
-    app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=8000, debug=True, use_reloader=False)
 
 
 class DeskBuddy(Robot):
@@ -96,7 +96,7 @@ class DeskBuddy(Robot):
         
         # Task management
         self.tasks = []
-        self.api_url = "http://localhost:5000/api/tasks"
+        self.api_url = "http://localhost:3000/api/tasks"
 
         # Get devices from world file
         self.led_left = self.getDevice("eye_led_left")
@@ -106,7 +106,7 @@ class DeskBuddy(Robot):
         self.head_motor = self.getDevice("tilt_motor")
         self.head_motor.setPosition(0.0)
 
-        # Hands 
+        # Arms 
         self.left_hand_motor = self.getDevice("left_arm_motor")
         self.left_hand_motor.setPosition(0.0)
         self.right_hand_motor = self.getDevice("right_arm_motor")
@@ -115,17 +115,12 @@ class DeskBuddy(Robot):
         # Wheel motors
         self.left_wheel = self.getDevice("left_wheel_motor")
         self.right_wheel = self.getDevice("right_wheel_motor")
-        self.left_wheel.setPosition(float('inf'))
-        self.right_wheel.setPosition(float('inf'))
-        self.left_wheel.setVelocity(0.0)
-        self.right_wheel.setVelocity(0.0)
-        
         self.left_rear_wheel = self.getDevice("left_rear_wheel_motor")
         self.right_rear_wheel = self.getDevice("right_rear_wheel_motor")
-        self.left_rear_wheel.setPosition(float('inf'))
-        self.right_rear_wheel.setPosition(float('inf'))
-        self.left_rear_wheel.setVelocity(0.0)
-        self.right_rear_wheel.setVelocity(0.0)
+        
+        for wheel in [self.left_wheel, self.right_wheel, self.left_rear_wheel, self.right_rear_wheel]:
+            wheel.setPosition(float('inf'))
+            wheel.setVelocity(0.0)
         
         # Movement parameters
         self.max_speed = 6.28
@@ -138,33 +133,52 @@ class DeskBuddy(Robot):
         """Add a task with name, date, and time."""
         if not task or not task.get("name"):
             print("⚠️ No task name provided.")
-            self.run_async(lambda: self.speak("Error: No task name provided."))
+            self.speak("Error: No task name provided.")
             return
 
         with self.action_lock:
             self.tasks.append(task)
+            task_info = f"{task['name']} on {task.get('date', 'no date')} at {task.get('time', 'no time')}"
         
-        task_info = f"{task['name']} on {task.get('date', 'no date')} at {task.get('time', 'no time')}"
+        # Speak OUTSIDE the lock
         print(f"✅ Task added: {task_info}")
-        
-        self.run_async(lambda: self.speak(f"Task added: {task['name']}"))
-        self.send_task_to_api(task)
+        self.speak(f"Task added: {task['name']}")
 
-    def list_tasks(self):
-        """List all current tasks."""
+    def get_tasks(self):
+        """Get all tasks (for API response)."""
+        with self.action_lock:
+            return list(self.tasks)
+
+    def list_tasks_vocal(self):
+        """List all tasks vocally and in console."""
+        # Get tasks WITHOUT holding lock during speech
+        task_list = None
         with self.action_lock:
             if not self.tasks:
-                print("📋 No tasks available.")
-                self.run_async(lambda: self.speak("You have no tasks."))
-                return []
-            
-            print(f"📋 You have {len(self.tasks)} tasks:")
-            for i, task in enumerate(self.tasks, start=1):
-                task_str = f"{i}. {task.get('name', 'Unnamed')} - {task.get('date', 'No date')} at {task.get('time', 'No time')}"
-                print(task_str)
-            
-            self.run_async(lambda: self.speak(f"You have {len(self.tasks)} tasks."))
-            return self.tasks
+                task_list = []
+            else:
+                task_list = list(self.tasks)  # Copy the list
+        
+        # Now process outside the lock
+        if not task_list:
+            print("📋 No tasks available.")
+            self.speak("You have no tasks.")
+            return
+        
+        print(f"\n📋 YOU HAVE {len(task_list)} TASKS:")
+        print("-" * 60)
+        for i, task in enumerate(task_list, start=1):
+            task_str = f"{i}. {task.get('name', 'Unnamed')} - {task.get('date', 'No date')} at {task.get('time', 'No time')}"
+            print(task_str)
+        print("-" * 60)
+        
+        # Speak first 3 tasks
+        if len(task_list) <= 3:
+            self.speak(f"You have {len(task_list)} tasks.")
+            for task in task_list:
+                self.speak(task.get('name', 'Unnamed task'))
+        else:
+            self.speak(f"You have {len(task_list)} tasks. Check console for full list.")
 
     def remove_task(self, index):
         """Remove a task by index."""
@@ -172,11 +186,11 @@ class DeskBuddy(Robot):
             if 0 <= index < len(self.tasks):
                 removed = self.tasks.pop(index)
                 print(f"🗑️ Removed task: {removed.get('name', 'Unnamed')}")
-                self.run_async(lambda: self.speak(f"Removed task: {removed.get('name', 'Task')}"))
+                self.speak(f"Removed task: {removed.get('name', 'Task')}")
                 return removed
             else:
                 print("⚠️ Invalid index for removal.")
-                self.run_async(lambda: self.speak("Invalid task number."))
+                self.speak("Invalid task number.")
                 return None
 
     def clear_tasks(self):
@@ -185,91 +199,80 @@ class DeskBuddy(Robot):
             count = len(self.tasks)
             self.tasks.clear()
         print(f"🧹 Cleared {count} tasks.")
-        self.run_async(lambda: self.speak(f"Cleared {count} tasks."))
-
-    def send_task_to_api(self, task):
-        """Send the task to an external API."""
-        try:
-            response = requests.post(self.api_url, json=task, timeout=5)
-            if response.status_code == 200:
-                print(f"🌐 Synced task successfully")
-            else:
-                print(f"⚠️ API sync failed ({response.status_code})")
-        except Exception as e:
-            print(f"🚫 Could not reach API: {e}")
+        self.speak(f"Cleared {count} tasks.")
 
     # ==========================================
-    # DIRECT MOVEMENT CONTROL
+    # MOVEMENT CONTROL
     # ==========================================
-    def move_forward_c(self):
-        with self.action_lock:
-            self.left_wheel.setVelocity(self.max_speed)
-            self.right_wheel.setVelocity(self.max_speed)
-            self.left_rear_wheel.setVelocity(self.max_speed)
-            self.right_rear_wheel.setVelocity(self.max_speed)
+    def move_forward(self, duration=None):
+        """Move forward (continuous if no duration, timed if duration given)."""
+        if duration:
+            print(f"Moving forward for {duration} seconds...")
+            self.set_wheel_velocity(2.0)
+            time.sleep(duration)
+            self.stop()
+        else:
+            self.set_wheel_velocity(self.max_speed)
 
-    def move_backward_c(self):
-        with self.action_lock:
-            self.left_wheel.setVelocity(-self.max_speed)
-            self.right_wheel.setVelocity(-self.max_speed)
-            self.left_rear_wheel.setVelocity(-self.max_speed)
-            self.right_rear_wheel.setVelocity(-self.max_speed)
+    def move_backward(self, duration=None):
+        """Move backward."""
+        if duration:
+            print(f"Moving backward for {duration} seconds...")
+            self.set_wheel_velocity(-2.0)
+            time.sleep(duration)
+            self.stop()
+        else:
+            self.set_wheel_velocity(-self.max_speed)
 
-    def turn_left_c(self):
-        with self.action_lock:
-            self.left_wheel.setVelocity(-self.turn_speed)
-            self.right_wheel.setVelocity(self.turn_speed)
-            self.left_rear_wheel.setVelocity(-self.turn_speed)
-            self.right_rear_wheel.setVelocity(self.turn_speed)
-
-    def turn_right_c(self):
-        with self.action_lock:
-            self.left_wheel.setVelocity(self.turn_speed)
-            self.right_wheel.setVelocity(-self.turn_speed)
-            self.left_rear_wheel.setVelocity(self.turn_speed)
-            self.right_rear_wheel.setVelocity(-self.turn_speed)
-
-    def stop_c(self):
-        with self.action_lock:
-            self.left_wheel.setVelocity(0.0)
-            self.right_wheel.setVelocity(0.0)
-            self.left_rear_wheel.setVelocity(0.0)
-            self.right_rear_wheel.setVelocity(0.0)
-
-    # ==========================================
-    # THREADED ACTIONS
-    # ==========================================
     def turn(self, direction, duration):
+        """Turn left or right for specified duration."""
         print(f"Turning {direction} for {duration} seconds...")
-        turn_speed = 2.0
         
-        with self.action_lock:
-            if direction.lower() == 'left':
-                self.left_wheel.setVelocity(-turn_speed)
-                self.right_wheel.setVelocity(turn_speed)
-                self.left_rear_wheel.setVelocity(-turn_speed)
-                self.right_rear_wheel.setVelocity(turn_speed)
-            elif direction.lower() == 'right':
-                self.left_wheel.setVelocity(turn_speed)
-                self.right_wheel.setVelocity(-turn_speed)
-                self.left_rear_wheel.setVelocity(turn_speed)
-                self.right_rear_wheel.setVelocity(-turn_speed)
+        if direction.lower() == 'left':
+            self.set_wheel_velocity_differential(-self.turn_speed, self.turn_speed)
+        elif direction.lower() == 'right':
+            self.set_wheel_velocity_differential(self.turn_speed, -self.turn_speed)
         
         time.sleep(duration)
-        
+        self.stop()
+
+    def set_wheel_velocity(self, velocity):
+        """Set all wheels to same velocity."""
+        with self.action_lock:
+            self.left_wheel.setVelocity(velocity)
+            self.right_wheel.setVelocity(velocity)
+            self.left_rear_wheel.setVelocity(velocity)
+            self.right_rear_wheel.setVelocity(velocity)
+
+    def set_wheel_velocity_differential(self, left_vel, right_vel):
+        """Set left and right wheels to different velocities (for turning)."""
+        with self.action_lock:
+            self.left_wheel.setVelocity(left_vel)
+            self.right_wheel.setVelocity(right_vel)
+            self.left_rear_wheel.setVelocity(left_vel)
+            self.right_rear_wheel.setVelocity(right_vel)
+
+    def stop(self):
+        """Stop all wheel movement."""
         with self.action_lock:
             self.left_wheel.setVelocity(0.0)
             self.right_wheel.setVelocity(0.0)
             self.left_rear_wheel.setVelocity(0.0)
             self.right_rear_wheel.setVelocity(0.0)
 
+    # ==========================================
+    # ACTIONS
+    # ==========================================
     def speak(self, message):
-        print(f"Speaking: '{message}'")
+        """Speak message with LED animation."""
+        print(f"🗣️ Speaking: '{message}'")
+        
         try:
             self.speaker.speak(message, 1.0)
         except Exception as e:
-            print(f"Could not use speaker: {e}")
+            print(f"⚠️ Speaker error: {e}")
         
+        # LED blinking during speech
         words = len(message.split())
         speak_duration = max(1.0, words * 0.3)
         blink_interval = 0.5
@@ -295,49 +298,27 @@ class DeskBuddy(Robot):
             self.led_left.set(0)
             self.led_right.set(0)
 
-    def move_forward(self, duration=2.0):
-        print(f"Moving forward for {duration} seconds...")
-        with self.action_lock:
-            self.left_wheel.setVelocity(2.0)
-            self.right_wheel.setVelocity(2.0)
-            self.left_rear_wheel.setVelocity(2.0)
-            self.right_rear_wheel.setVelocity(2.0)
-        time.sleep(duration)
-        with self.action_lock:
-            self.left_wheel.setVelocity(0.0)
-            self.right_wheel.setVelocity(0.0)
-            self.left_rear_wheel.setVelocity(0.0)
-            self.right_rear_wheel.setVelocity(0.0)
-
-    def move_backward(self, duration=2.0):
-        print(f"Moving backward for {duration} seconds...")
-        with self.action_lock:
-            self.left_wheel.setVelocity(-2.0)
-            self.right_wheel.setVelocity(-2.0)
-            self.left_rear_wheel.setVelocity(-2.0)
-            self.right_rear_wheel.setVelocity(-2.0)
-        time.sleep(duration)
-        with self.action_lock:
-            self.left_wheel.setVelocity(0.0)
-            self.right_wheel.setVelocity(0.0)
-            self.left_rear_wheel.setVelocity(0.0)
-            self.right_rear_wheel.setVelocity(0.0)
-
     def wave(self):
-        print("Waving...")
+        """Wave with head and right arm."""
+        print("👋 Waving...")
+        
         with self.action_lock:
             self.head_motor.setPosition(0.2)
-            self.right_hand_motor.setPosition(0.5)
+            self.right_hand_motor.setPosition(1)
         time.sleep(0.5)
+        
         with self.action_lock:
             self.head_motor.setPosition(-0.2)
-            self.right_hand_motor.setPosition(-0.5)
+            self.right_hand_motor.setPosition(-1)
         time.sleep(0.5)
+        
         with self.action_lock:
             self.head_motor.setPosition(0.0)
             self.right_hand_motor.setPosition(0.0)
 
     def blink_lights(self):
+        """Blink LEDs 3 times."""
+        print("✨ Blinking...")
         for i in range(3):
             with self.action_lock:
                 self.led_left.set(1)
@@ -351,24 +332,31 @@ class DeskBuddy(Robot):
     def say_hello(self):
         self.speak("Hello! I'm your Robo Desk Buddy!")
 
+    # ==========================================
+    # THREADING
+    # ==========================================
     def run_async(self, func):
+        """Execute function in separate thread."""
         def wrapper():
             try:
                 func()
             except Exception as e:
-                print(f"Thread error: {e}")
+                print(f"❌ Thread error: {e}")
             finally:
                 with self.action_lock:
                     if threading.current_thread() in self.active_threads:
                         self.active_threads.remove(threading.current_thread())
         
-        thread = threading.Thread(target=wrapper)
+        thread = threading.Thread(target=wrapper, daemon=True)
         with self.action_lock:
             self.active_threads.append(thread)
         thread.start()
         return thread
 
-    def stop_all_actions(self):
+    def stop_all(self):
+        """Emergency stop - reset all devices."""
+        print("🛑 Stopping all actions...")
+        
         with self.action_lock:
             self.head_motor.setPosition(0.0)
             self.led_left.set(0)
@@ -392,21 +380,14 @@ def main():
     api_thread.start()
 
     print("=" * 70)
-    print("DESKBUDDY ROBOT CONTROLS:")
-    print("  MOVEMENT:")
-    print("    F = Move Forward | R = Move Backward")
-    print("    L = Turn Left    | G = Turn Right    | Space = Stop")
-    print("  ACTIONS:")
-    print("    W = Wave | B = Blink | H = Say Hello")
-    print("  TASKS (via API):")
-    print("    A = Add Task (opens API instructions)")
-    print("    K = List Tasks")
-    print("    C = Clear All Tasks")
-    print("  OTHER:")
-    print("    S = Stop All | Q = Quit")
+    print("🤖 DESKBUDDY ROBOT CONTROLS")
     print("=" * 70)
-    print("\n📡 API ENDPOINT: http://localhost:8000/command")
-    print("Example: curl -X POST http://localhost:8000/command -H 'Content-Type: application/json' -d '{\"action\":\"add_task\",\"task_name\":\"Meeting\",\"date\":\"2025-10-16\",\"time\":\"14:00\"}'")
+    print("MOVEMENT:  F=Forward | R=Backward | L=Turn Left | G=Turn Right | Space=Stop")
+    print("ACTIONS:   W=Wave | B=Blink | H=Say Hello")
+    print("TASKS:     A=Add Task Info | K=List Tasks | C=Clear Tasks")
+    print("SYSTEM:    S=Stop All | Q=Quit")
+    print("=" * 70)
+    print("📡 API: http://localhost:8000/command")
     print("=" * 70)
 
     while bot.step(TIME_STEP) != -1:
@@ -414,15 +395,15 @@ def main():
         
         # Movement
         if key == ord('F'):
-            bot.move_forward_c()
+            bot.move_forward()
         elif key == ord('R'):
-            bot.move_backward_c()
+            bot.move_backward()
         elif key == ord('L'):
-            bot.turn_left_c()
+            bot.set_wheel_velocity_differential(-bot.turn_speed, bot.turn_speed)
         elif key == ord('G'):
-            bot.turn_right_c()
+            bot.set_wheel_velocity_differential(bot.turn_speed, -bot.turn_speed)
         elif key == ord(' '):
-            bot.stop_c()
+            bot.stop()
         
         # Actions
         elif key == ord('W'):
@@ -437,23 +418,23 @@ def main():
             print("\n📝 ADD TASK via API:")
             print("curl -X POST http://localhost:8000/command -H 'Content-Type: application/json' \\")
             print("-d '{\"action\":\"add_task\",\"task_name\":\"YOUR_TASK\",\"date\":\"2025-10-16\",\"time\":\"14:00\"}'")
-            bot.run_async(lambda: bot.speak("Use API to add task. Check console for instructions."))
+            bot.run_async(lambda: bot.speak("Use API to add task. Check console."))
         
         elif key == ord('K'):
-            bot.list_tasks()
+            bot.run_async(bot.list_tasks_vocal)
         
         elif key == ord('C'):
-            bot.clear_tasks()
+            bot.run_async(bot.clear_tasks)
         
         # System
         elif key == ord('S'):
-            bot.stop_all_actions()
+            bot.stop_all()
         elif key == ord('Q'):
-            print("Quitting...")
-            bot.stop_all_actions()
+            print("👋 Quitting...")
+            bot.stop_all()
             break
 
-    print("Desk Buddy shutting down...")
+    print("🤖 Desk Buddy shutting down...")
 
 
 if __name__ == "__main__":
