@@ -47,6 +47,14 @@ def handle_command():
         robot_instance.run_async(robot_instance.blink_lights)
     elif action == "wave":
         robot_instance.run_async(robot_instance.wave)
+    elif action == "patrol_mode":
+        robot_instance.run_async(robot_instance.patrol_mode)
+    elif action == "dance":
+        robot_instance.run_async(robot_instance.dance)
+    elif action == "turn_and_speak":
+        robot_instance.run_async(lambda: robot_instance.turn_and_speak(message))
+    elif action == "all_actions":
+        robot_instance.run_async(robot_instance.all_actions)
     elif action == "stop":
         robot_instance.stop_all()
 
@@ -332,6 +340,41 @@ class DeskBuddy(Robot):
     def say_hello(self):
         self.speak("Hello! I'm your Robo Desk Buddy!")
 
+    def patrol_mode(self):
+        """Simple patrol: move forward, turn, repeat."""
+        print("🚶 Starting patrol mode...")
+        for _ in range(4):
+            self.move_forward(2)
+            self.turn("right", 1)
+        self.stop()
+        print("🚶 Patrol mode ended.")
+    
+    def dance(self):
+        """Simple dance routine."""
+        print("💃 Starting dance...")
+        for _ in range(2):
+            self.turn("left", 0.5)
+            self.turn("right", 0.5)
+        self.wave()
+        self.blink_lights()
+        print("💃 Dance ended.")
+    
+    def turn_and_speak(self, message):
+        """Turn left while speaking a message."""
+        print("🔄 Turning and speaking...")
+        self.run_async(lambda: self.turn("left", 3))
+        self.speak(message)
+        print("🔄 Turn and speak ended.")
+    
+    def all_actions(self):
+        """Perform all actions simultaneously."""
+        print("🤹 Performing all actions...")
+        self.run_async(lambda: self.move_forward(5))
+        self.run_async(self.wave)
+        self.run_async(self.blink_lights)
+        self.run_async(lambda: self.speak("I am dancing while moving!"))
+        print("🤹 All actions started.")
+
     # ==========================================
     # THREADING
     # ==========================================
@@ -383,6 +426,7 @@ def main():
     print("🤖 DESKBUDDY ROBOT CONTROLS")
     print("=" * 70)
     print("MOVEMENT:  F=Forward | R=Backward | L=Turn Left | G=Turn Right | Space=Stop")
+    print("Threading MOVEMENT:  P=Patrol Mode | D=Dance | Y=All Actions Simultaneously | T=Turn Left & Speak")
     print("ACTIONS:   W=Wave | B=Blink | H=Say Hello")
     print("TASKS:     A=Add Task Info | K=List Tasks | C=Clear Tasks")
     print("SYSTEM:    S=Stop All | Q=Quit")
@@ -404,7 +448,20 @@ def main():
             bot.set_wheel_velocity_differential(bot.turn_speed, -bot.turn_speed)
         elif key == ord(' '):
             bot.stop()
-        
+
+        # Threaded Movement
+        elif key == ord('P'):
+            bot.run_async(bot.patrol_mode)
+
+        elif key == ord('D'):
+            bot.run_async(bot.dance)
+
+        elif key == ord('Y'):
+            bot.run_async(bot.all_actions)
+
+        elif key == ord('T'):
+            bot.run_async(lambda: bot.turn_and_speak("I am turning left while speaking!"))
+
         # Actions
         elif key == ord('W'):
             bot.run_async(bot.wave)
