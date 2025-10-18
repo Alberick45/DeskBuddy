@@ -52,7 +52,7 @@ def handle_command():
     elif action == "dance":
         robot_instance.run_async(robot_instance.dance)
     elif action == "turn_and_speak":
-        robot_instance.run_async(lambda: robot_instance.turn_and_speak(message))
+        robot_instance.run_async(lambda msg=message: robot_instance.turn_and_speak(msg))
     elif action == "all_actions":
         robot_instance.run_async(robot_instance.all_actions)
     elif action == "stop":
@@ -151,63 +151,195 @@ class DeskBuddy(Robot):
         # Speak OUTSIDE the lock
         print(f"✅ Task added: {task_info}")
         self.speak(f"Task added: {task['name']}")
+        # Sync to external API (Next.js)
+        try:
+            response = requests.post(
+                self.api_url,  # http://localhost:3000/api/tasks
+                json=task,
+                timeout=5
+            )
+            if response.status_code in [200, 201]:
+                print(f"🌐 Synced to Next.js API successfully")
+            else:
+                print(f"⚠️ API sync failed (status {response.status_code})")
+        except requests.exceptions.RequestException as e:
+            print(f"🚫 Could not reach Next.js API: {e}")
+            print("   Task saved locally only")
 
     def get_tasks(self):
-        """Get all tasks (for API response)."""
+        """Get all tasks from external API (fallback to local)."""
+        try:
+            response = requests.get(self.api_url, timeout=5)
+            if response.status_code == 200:
+                fetched_tasks = response.json()
+                
+                # Update local cache
+                with self.action_lock:
+                    self.tasks = fetched_tasks
+                
+                print(f"🌐 Fetched {len(fetched_tasks)} tasks from Next.js API")
+                return fetched_tasks
+        except requests.exceptions.RequestException as e:
+            print(f"🚫 Could not reach Next.js API: {e}")
+            print("   Using local tasks")
+        
+        # Fallback to local
         with self.action_lock:
             return list(self.tasks)
 
     def list_tasks_vocal(self):
-        """List all tasks vocally and in console."""
-        # Get tasks WITHOUT holding lock during speech
-        task_list = None
+        """Fetch tasks from API, then list vocally (next 3 closest) and show all in console."""
+        from datetime import datetime
+        
+        # Fetch from server first
+        try:
+            response = requests.get(self.api_url, timeout=5)
+            if response.status_code == 200:
+                server_tasks = response.json()
+                # Update local list with server data
+                with self.action_lock:
+                    self.tasks = server_tasks
+                print("🌐 Fetched tasks from Next.js API")
+        except requests.exceptions.RequestException as e:
+            print(f"🚫 Using local tasks only: {e}")
+        
+        # Now list them
         with self.action_lock:
             if not self.tasks:
                 task_list = []
             else:
-                task_list = list(self.tasks)  # Copy the list
+                task_list = list(self.tasks)
         
-        # Now process outside the lock
         if not task_list:
             print("📋 No tasks available.")
             self.speak("You have no tasks.")
             return
         
-        print(f"\n📋 YOU HAVE {len(task_list)} TASKS:")
+        # Sort tasks by date and time (closest first)
+        def parse_task_datetime(task):
+            """Parse task date/time into datetime object for sorting."""
+            try:
+                date_str = task.get('date', '')
+                time_str = task.get('time', '00:00')
+                
+                # Try to parse the date (support multiple formats)
+                datetime_str = f"{date_str} {time_str}"
+                
+                # Try ISO format first (YYYY-MM-DD)
+                try:
+                    return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    pass
+                
+                # Try other common formats
+                for fmt in ["%B %d %Y %H:%M", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M"]:
+                    try:
+                        return datetime.strptime(datetime_str, fmt)
+                    except ValueError:
+                        continue
+                
+                # If all parsing fails, return far future so it goes to end
+                return datetime.max
+            except Exception:
+                return datetime.max
+        
+        # Get current time
+        now = datetime.now()
+        
+        # Sort tasks: upcoming tasks first, then past tasks
+        sorted_tasks = sorted(task_list, key=lambda t: abs((parse_task_datetime(t) - now).total_seconds()))
+        
+        # Print ALL tasks to console
+        print(f"\n📋 YOU HAVE {len(sorted_tasks)} TASKS:")
         print("-" * 60)
-        for i, task in enumerate(task_list, start=1):
-            task_str = f"{i}. {task.get('name', 'Unnamed')} - {task.get('date', 'No date')} at {task.get('time', 'No time')}"
+        for i, task in enumerate(sorted_tasks, start=1):
+            task_datetime = parse_task_datetime(task)
+            if task_datetime != datetime.max:
+                is_past = task_datetime < now
+                status = "⏰ PAST" if is_past else "🔜 UPCOMING"
+            else:
+                status = "❓ NO DATE"
+            
+            task_str = f"{i}. {task.get('name', 'Unnamed')} - {task.get('date', 'No date')} at {task.get('time', 'No time')} {status}"
             print(task_str)
         print("-" * 60)
         
-        # Speak first 3 tasks
-        if len(task_list) <= 3:
-            self.speak(f"You have {len(task_list)} tasks.")
-            for task in task_list:
-                self.speak(task.get('name', 'Unnamed task'))
+        # Get next 3 closest tasks (upcoming only, or all if less than 3)
+        upcoming_tasks = [t for t in sorted_tasks if parse_task_datetime(t) >= now]
+        
+        # If no upcoming tasks, use the 3 most recent past tasks
+        if not upcoming_tasks:
+            closest_3 = sorted_tasks[:3]
+            time_context = "most recent"
         else:
-            self.speak(f"You have {len(task_list)} tasks. Check console for full list.")
+            closest_3 = upcoming_tasks[:3]
+            time_context = "upcoming"
+        
+        # Speak summary + next 3 tasks
+        total_count = len(sorted_tasks)
+        self.speak(f"You have {total_count} task{'s' if total_count != 1 else ''}.")
+        
+        if closest_3:
+            self.speak(f"Your {time_context} tasks are:")
+            for task in closest_3:
+                task_name = task.get('name', 'Unnamed task')
+                task_date = task.get('date', 'no date')
+                task_time = task.get('time', 'no time')
+                self.speak(f"{task_name}, on {task_date} at {task_time}.")
+        else:
+            self.speak("No upcoming tasks.")
 
     def remove_task(self, index):
-        """Remove a task by index."""
+        """Remove a task by index locally AND from API."""
         with self.action_lock:
             if 0 <= index < len(self.tasks):
                 removed = self.tasks.pop(index)
-                print(f"🗑️ Removed task: {removed.get('name', 'Unnamed')}")
-                self.speak(f"Removed task: {removed.get('name', 'Task')}")
-                return removed
+                task_id = removed.get('id')  # Assuming tasks have IDs
             else:
                 print("⚠️ Invalid index for removal.")
                 self.speak("Invalid task number.")
                 return None
+        
+        print(f"🗑️ Removed locally: {removed.get('name', 'Unnamed')}")
+        self.speak(f"Removed task: {removed.get('name', 'Task')}")
+        
+        # Sync deletion to API (if your API supports DELETE)
+        if task_id:
+            try:
+                response = requests.delete(
+                    f"{self.api_url}/{task_id}",
+                    timeout=5
+                )
+                if response.status_code in [200, 204]:
+                    print(f"🌐 Deleted from Next.js API")
+                else:
+                    print(f"⚠️ API delete failed (status {response.status_code})")
+            except requests.exceptions.RequestException as e:
+                print(f"🚫 Could not reach Next.js API: {e}")
+        
+        return removed
 
     def clear_tasks(self):
-        """Clear all tasks."""
+        """Clear all tasks locally AND on API."""
         with self.action_lock:
             count = len(self.tasks)
+            if count == 0:
+                print("📋 No tasks to clear.")
+                return
             self.tasks.clear()
-        print(f"🧹 Cleared {count} tasks.")
-        self.speak(f"Cleared {count} tasks.")
+        
+        print(f"🧹 Cleared {count} task{'s' if count != 1 else ''} locally.")
+        self.speak(f"Cleared {count} task{'s' if count != 1 else ''}.")
+        
+        # Sync clear to API (if supported)
+        try:
+            response = requests.delete(self.api_url, timeout=5)
+            if response.status_code in [200, 204]:
+                print(f"🌐 Cleared all tasks from Next.js API")
+            else:
+                print(f"⚠️ API clear failed (status {response.status_code})")
+        except requests.exceptions.RequestException as e:
+            print(f"🚫 Could not reach Next.js API: {e}")
 
     # ==========================================
     # MOVEMENT CONTROL
