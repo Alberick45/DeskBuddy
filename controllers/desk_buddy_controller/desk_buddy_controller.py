@@ -3,8 +3,10 @@ import time
 import requests
 from controller import Robot, Keyboard
 from flask import Flask, request, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
 
+# Webots time step
 TIME_STEP = 32
 
 # ==========================================
@@ -12,6 +14,7 @@ TIME_STEP = 32
 # ==========================================
 app = Flask(__name__)
 robot_instance = None
+
 
 @app.route("/command", methods=["POST"])
 def handle_command():
@@ -24,15 +27,11 @@ def handle_command():
     action = data.get("action")
     duration = float(data.get("duration", 2.0))
     message = data.get("message", "")
-    
-    # Task-specific fields
-    task_name = data.get("task_name", "")
-    task_date = data.get("date", "")
-    task_time = data.get("time", "")
-    
+    reminder_text = data.get("reminder_text", "")
+
     print(f"[API] Received: {action}")
 
-    # ====== ROBOT MOVEMENT & ACTIONS ======
+    # Robot movement & actions
     if action == "forward":
         robot_instance.run_async(lambda: robot_instance.move_forward(duration))
     elif action == "backward":
@@ -42,7 +41,7 @@ def handle_command():
     elif action == "turn_right":
         robot_instance.run_async(lambda: robot_instance.turn("right", duration))
     elif action == "speak":
-        robot_instance.run_async(lambda: robot_instance.speak(message))
+        robot_instance.run_async(lambda msg=message: robot_instance.speak(msg))
     elif action == "blink":
         robot_instance.run_async(robot_instance.blink_lights)
     elif action == "wave":
@@ -58,26 +57,15 @@ def handle_command():
     elif action == "stop":
         robot_instance.stop_all()
 
-    # ====== TASK COMMANDS ======
-    elif action == "add_task":
-        task = {
-            "name": task_name,
-            "date": task_date,
-            "time": task_time,
-            "created": datetime.now().isoformat()
-        }
-        robot_instance.add_task(task)
-        return jsonify({"status": "Task added", "task": task}), 200
-        
+    # Reminder/task commands
+    elif action == "add_reminder":
+        robot_instance.add_reminder_from_text(reminder_text)
+        return jsonify({"status": "Reminder added"}), 200
+
     elif action == "list_tasks":
         tasks = robot_instance.get_tasks()
         return jsonify({"tasks": tasks}), 200
-        
-    elif action == "remove_task":
-        index = int(data.get("index", -1))
-        removed = robot_instance.remove_task(index)
-        return jsonify({"removed": removed}), 200
-        
+
     elif action == "clear_tasks":
         robot_instance.clear_tasks()
         return jsonify({"status": "All tasks cleared"}), 200
@@ -91,263 +79,339 @@ def handle_command():
 def start_api_server():
     """Run Flask API in a background thread."""
     print("🚀 Starting local control API on http://localhost:8000/command")
-    app.run(host="0.0.0.0", port=8000, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False, threaded=True)
 
 
+# ==========================================
+# DESK BUDDY (Robot)
+# ==========================================
 class DeskBuddy(Robot):
     def __init__(self):
         super().__init__()
-        
-        # Threading control
+
+        # Threading & locks
         self.action_lock = threading.Lock()
         self.active_threads = []
-        
+
         # Task management
         self.tasks = []
         self.api_url = "http://localhost:3000/api/tasks"
 
-        # Get devices from world file
+        # Key debouncing
+        self.last_key_time = {}
+        self.key_cooldown = 0.18
+        self.key_timestamps = {}
+
+        # Extra typing debounce
+        self.typing_cooldown = 0.15
+
+        # INPUT MODE STATE MACHINE
+        self.input_mode = "idle"
+        self.typed_text = ""
+
+        # Devices
         self.led_left = self.getDevice("eye_led_left")
         self.led_right = self.getDevice("eye_led_right")
-        self.speaker = self.getDevice("speaker")
-        self.speaker.setLanguage("en-US")
-        self.head_motor = self.getDevice("tilt_motor")
-        self.head_motor.setPosition(0.0)
 
-        # Arms 
+        self.speaker = self.getDevice("speaker")
+        try:
+            self.speaker.setLanguage("en-US")
+        except Exception:
+            pass
+
+        self.head_motor = self.getDevice("tilt_motor")
+        try:
+            self.head_motor.setPosition(0.0)
+        except Exception:
+            pass
+
+        # Arms
         self.left_hand_motor = self.getDevice("left_arm_motor")
-        self.left_hand_motor.setPosition(0.0)
         self.right_hand_motor = self.getDevice("right_arm_motor")
-        self.right_hand_motor.setPosition(0.0)
-        
+        try:
+            self.left_hand_motor.setPosition(0.0)
+            self.right_hand_motor.setPosition(0.0)
+        except Exception:
+            pass
+
         # Wheel motors
         self.left_wheel = self.getDevice("left_wheel_motor")
         self.right_wheel = self.getDevice("right_wheel_motor")
         self.left_rear_wheel = self.getDevice("left_rear_wheel_motor")
         self.right_rear_wheel = self.getDevice("right_rear_wheel_motor")
-        
         for wheel in [self.left_wheel, self.right_wheel, self.left_rear_wheel, self.right_rear_wheel]:
-            wheel.setPosition(float('inf'))
-            wheel.setVelocity(0.0)
-        
+            try:
+                wheel.setPosition(float('inf'))
+                wheel.setVelocity(0.0)
+            except Exception:
+                pass
+
         # Movement parameters
         self.max_speed = 6.28
         self.turn_speed = 3.0
 
-    # ========================
-    # TASK MANAGEMENT
-    # ========================
-    def add_task(self, task):
-        """Add a task with name, date, and time."""
-        if not task or not task.get("name"):
-            print("⚠️ No task name provided.")
-            self.speak("Error: No task name provided.")
+    # -----------------------
+    # NLP parsing for reminders
+    # -----------------------
+    def parse_reminder_nlp(self, text):
+        """Advanced NLP parsing for date/time extraction."""
+        now = datetime.now()
+
+        reminder_date = now.strftime("%Y-%m-%d")
+        reminder_time = "12:00"
+        task_name = text.strip()
+
+        text_lower = text.lower()
+
+        # TIME extraction
+        time_match = re.search(r'(\b\d{1,2}:\d{2}\b)\s*(am|pm)?', text_lower)
+        if time_match:
+            time_part = time_match.group(1)
+            ampm = time_match.group(2)
+            hour, minute = map(int, time_part.split(':'))
+            if ampm:
+                ampm = ampm.lower()
+                if ampm == 'pm' and hour != 12:
+                    hour += 12
+                if ampm == 'am' and hour == 12:
+                    hour = 0
+            reminder_time = f"{hour:02d}:{minute:02d}"
+            task_name = task_name.replace(time_match.group(0), '').strip()
+        else:
+            time_match2 = re.search(r'\b(\d{1,2})\s*(am|pm)\b', text_lower)
+            if time_match2:
+                hour = int(time_match2.group(1))
+                ampm = time_match2.group(2).lower()
+                if ampm == 'pm' and hour != 12:
+                    hour += 12
+                if ampm == 'am' and hour == 12:
+                    hour = 0
+                reminder_time = f"{hour:02d}:00"
+                task_name = task_name.replace(time_match2.group(0), '').strip()
+
+        # DATE extraction
+        if 'tomorrow' in text_lower:
+            reminder_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            task_name = re.sub(r'\btomorrow\b', '', task_name, flags=re.IGNORECASE).strip()
+        elif 'today' in text_lower:
+            reminder_date = now.strftime("%Y-%m-%d")
+            task_name = re.sub(r'\btoday\b', '', task_name, flags=re.IGNORECASE).strip()
+        elif 'next week' in text_lower:
+            reminder_date = (now + timedelta(days=7)).strftime("%Y-%m-%d")
+            task_name = re.sub(r'next week', '', task_name, flags=re.IGNORECASE).strip()
+
+        # Weekday names
+        weekdays = {
+            'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+            'friday': 4, 'saturday': 5, 'sunday': 6
+        }
+
+        for day_name, day_num in weekdays.items():
+            if re.search(rf'\b(next\s+)?{day_name}\b', text_lower):
+                current_weekday = now.weekday()
+                days_ahead = (day_num - current_weekday) % 7
+                if days_ahead == 0 and 'next ' not in text_lower:
+                    days_ahead = 0
+                if re.search(rf'\bnext\s+{day_name}\b', text_lower):
+                    days_ahead = (day_num - current_weekday) % 7 + 7
+                if days_ahead == 0 and 'next ' in text_lower:
+                    days_ahead = 7
+                reminder_date = (now + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+                task_name = re.sub(rf'\b(next\s+)?{day_name}\b', '', task_name, flags=re.IGNORECASE).strip()
+                break
+
+        # Month name + day
+        month_names = {
+            'jan': 1, 'january': 1, 'feb': 2, 'february': 2,
+            'mar': 3, 'march': 3, 'apr': 4, 'april': 4,
+            'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+            'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9,
+            'oct': 10, 'october': 10, 'nov': 11, 'november': 11,
+            'dec': 12, 'december': 12
+        }
+
+        for mname, mnum in month_names.items():
+            match = re.search(rf'\b{mname}\s+(\d{{1,2}})\b', text_lower)
+            if match:
+                day = int(match.group(1))
+                year = now.year
+                try:
+                    candidate = datetime(year, mnum, day)
+                    if candidate < now:
+                        candidate = datetime(year + 1, mnum, day)
+                    reminder_date = candidate.strftime("%Y-%m-%d")
+                    task_name = re.sub(rf'\b{mname}\s+\d{{1,2}}\b', '', task_name, flags=re.IGNORECASE).strip()
+                except ValueError:
+                    pass
+                break
+
+        for mname, mnum in month_names.items():
+            match = re.search(rf'\b(\d{{1,2}})\s+{mname}\b', text_lower)
+            if match:
+                day = int(match.group(1))
+                year = now.year
+                try:
+                    candidate = datetime(year, mnum, day)
+                    if candidate < now:
+                        candidate = datetime(year + 1, mnum, day)
+                    reminder_date = candidate.strftime("%Y-%m-%d")
+                    task_name = re.sub(rf'\b\d{{1,2}}\s+{mname}\b', '', task_name, flags=re.IGNORECASE).strip()
+                except ValueError:
+                    pass
+                break
+
+        # Final cleanup
+        task_name = re.sub(r'\s+', ' ', task_name)
+        task_name = re.sub(r'\b(remind me|reminder|on|at)\b', '', task_name, flags=re.IGNORECASE).strip()
+        task_name = task_name.lstrip(',:;-').strip()
+        if not task_name:
+            task_name = "Reminder"
+
+        return task_name, reminder_date, reminder_time
+
+    # -----------------------
+    # Key debouncing helpers
+    # -----------------------
+    def is_key_ready(self, key, cooldown=0.2):
+        """Check if enough time has passed since last key press."""
+        now = time.time()
+        last_time = self.key_timestamps.get(key, 0)
+        diff = now - last_time
+
+        if diff >= cooldown:
+            self.key_timestamps[key] = now
+            return True
+        else:
+            return False
+
+    # -----------------------
+    # Tasks / reminders
+    # -----------------------
+    def add_reminder_from_text(self, text):
+        if not text or not text.strip():
+            print("⚠️ No reminder text provided.")
+            self.speak("Error: No reminder text provided.")
             return
+
+        task_name, reminder_date, reminder_time = self.parse_reminder_nlp(text)
+
+        task = {
+            "name": task_name,
+            "date": reminder_date,
+            "time": reminder_time,
+            "created": datetime.now().isoformat(),
+            "type": "reminder"
+        }
 
         with self.action_lock:
             self.tasks.append(task)
-            task_info = f"{task['name']} on {task.get('date', 'no date')} at {task.get('time', 'no time')}"
-        
-        # Speak OUTSIDE the lock
-        print(f"✅ Task added: {task_info}")
-        self.speak(f"Task added: {task['name']}")
-        # Sync to external API (Next.js)
-        try:
-            response = requests.post(
-                self.api_url,  # http://localhost:3000/api/tasks
-                json=task,
-                timeout=5
-            )
-            if response.status_code in [200, 201]:
-                print(f"🌐 Synced to Next.js API successfully")
-            else:
-                print(f"⚠️ API sync failed (status {response.status_code})")
-        except requests.exceptions.RequestException as e:
-            print(f"🚫 Could not reach Next.js API: {e}")
-            print("   Task saved locally only")
+
+        print(f"✅ Reminder added: {task_name} — {reminder_date} {reminder_time}")
+        self.speak(f"Reminder set: {task_name}, on {reminder_date} at {reminder_time}")
+
+        def sync_add():
+            try:
+                response = requests.post(self.api_url, json=task, timeout=5)
+                if response.status_code in (200, 201):
+                    print("🌐 Synced to API")
+                else:
+                    print(f"⚠️ Sync failed ({response.status_code})")
+            except Exception as e:
+                print(f"🚫 Could not reach API: {e}")
+
+        threading.Thread(target=sync_add, daemon=True).start()
 
     def get_tasks(self):
-        """Get all tasks from external API (fallback to local)."""
+        """Get tasks from API with safe fallback to local list."""
         try:
             response = requests.get(self.api_url, timeout=5)
             if response.status_code == 200:
-                fetched_tasks = response.json()
-                
-                # Update local cache
+                fetched = response.json()
                 with self.action_lock:
-                    self.tasks = fetched_tasks
-                
-                print(f"🌐 Fetched {len(fetched_tasks)} tasks from Next.js API")
-                return fetched_tasks
+                    self.tasks = fetched
+                print(f"🌐 Fetched {len(fetched)} tasks from API")
+                return fetched
         except requests.exceptions.RequestException as e:
-            print(f"🚫 Could not reach Next.js API: {e}")
-            print("   Using local tasks")
-        
-        # Fallback to local
+            print(f"🚫 Using local tasks: {e}")
+
         with self.action_lock:
             return list(self.tasks)
 
     def list_tasks_vocal(self):
-        """Fetch tasks from API, then list vocally (next 3 closest) and show all in console."""
-        from datetime import datetime
-        
-        # Fetch from server first
+        """List tasks, sort by closeness to now, and speak top items."""
+        from datetime import datetime as dt
+
         try:
             response = requests.get(self.api_url, timeout=5)
             if response.status_code == 200:
                 server_tasks = response.json()
-                # Update local list with server data
                 with self.action_lock:
                     self.tasks = server_tasks
-                print("🌐 Fetched tasks from Next.js API")
+                print("🌐 Fetched tasks from API")
         except requests.exceptions.RequestException as e:
-            print(f"🚫 Using local tasks only: {e}")
-        
-        # Now list them
+            print(f"🚫 Using local tasks: {e}")
+
         with self.action_lock:
-            if not self.tasks:
-                task_list = []
-            else:
-                task_list = list(self.tasks)
-        
+            task_list = list(self.tasks)
+
         if not task_list:
             print("📋 No tasks available.")
             self.speak("You have no tasks.")
             return
-        
-        # Sort tasks by date and time (closest first)
+
         def parse_task_datetime(task):
-            """Parse task date/time into datetime object for sorting."""
             try:
                 date_str = task.get('date', '')
                 time_str = task.get('time', '00:00')
-                
-                # Try to parse the date (support multiple formats)
-                datetime_str = f"{date_str} {time_str}"
-                
-                # Try ISO format first (YYYY-MM-DD)
-                try:
-                    return datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
-                except ValueError:
-                    pass
-                
-                # Try other common formats
-                for fmt in ["%B %d %Y %H:%M", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M"]:
-                    try:
-                        return datetime.strptime(datetime_str, fmt)
-                    except ValueError:
-                        continue
-                
-                # If all parsing fails, return far future so it goes to end
-                return datetime.max
+                dt_str = f"{date_str} {time_str}"
+                return dt.strptime(dt_str, "%Y-%m-%d %H:%M")
             except Exception:
-                return datetime.max
-        
-        # Get current time
-        now = datetime.now()
-        
-        # Sort tasks: upcoming tasks first, then past tasks
+                return dt.max
+
+        now = dt.now()
         sorted_tasks = sorted(task_list, key=lambda t: abs((parse_task_datetime(t) - now).total_seconds()))
-        
-        # Print ALL tasks to console
         print(f"\n📋 YOU HAVE {len(sorted_tasks)} TASKS:")
-        print("-" * 60)
-        for i, task in enumerate(sorted_tasks, start=1):
-            task_datetime = parse_task_datetime(task)
-            if task_datetime != datetime.max:
-                is_past = task_datetime < now
+        for i, t in enumerate(sorted_tasks, 1):
+            td = parse_task_datetime(t)
+            if td != dt.max:
+                is_past = td < now
+                date_display = "Today" if td.date() == now.date() else t.get('date', 'No date')
                 status = "⏰ PAST" if is_past else "🔜 UPCOMING"
             else:
+                date_display = t.get('date', 'No date')
                 status = "❓ NO DATE"
-            
-            task_str = f"{i}. {task.get('name', 'Unnamed')} - {task.get('date', 'No date')} at {task.get('time', 'No time')} {status}"
-            print(task_str)
-        print("-" * 60)
-        
-        # Get next 3 closest tasks (upcoming only, or all if less than 3)
-        upcoming_tasks = [t for t in sorted_tasks if parse_task_datetime(t) >= now]
-        
-        # If no upcoming tasks, use the 3 most recent past tasks
-        if not upcoming_tasks:
-            closest_3 = sorted_tasks[:3]
-            time_context = "most recent"
-        else:
-            closest_3 = upcoming_tasks[:3]
-            time_context = "upcoming"
-        
-        # Speak summary + next 3 tasks
-        total_count = len(sorted_tasks)
-        self.speak(f"You have {total_count} task{'s' if total_count != 1 else ''}.")
-        
-        if closest_3:
-            self.speak(f"Your {time_context} tasks are:")
-            for task in closest_3:
-                task_name = task.get('name', 'Unnamed task')
-                task_date = task.get('date', 'no date')
-                task_time = task.get('time', 'no time')
-                self.speak(f"{task_name}, on {task_date} at {task_time}.")
-        else:
-            self.speak("No upcoming tasks.")
+            print(f"{i}. {t.get('name')} - {date_display} at {t.get('time')} {status}")
 
-    def remove_task(self, index):
-        """Remove a task by index locally AND from API."""
-        with self.action_lock:
-            if 0 <= index < len(self.tasks):
-                removed = self.tasks.pop(index)
-                task_id = removed.get('id')  # Assuming tasks have IDs
-            else:
-                print("⚠️ Invalid index for removal.")
-                self.speak("Invalid task number.")
-                return None
-        
-        print(f"🗑️ Removed locally: {removed.get('name', 'Unnamed')}")
-        self.speak(f"Removed task: {removed.get('name', 'Task')}")
-        
-        # Sync deletion to API (if your API supports DELETE)
-        if task_id:
-            try:
-                response = requests.delete(
-                    f"{self.api_url}/{task_id}",
-                    timeout=5
-                )
-                if response.status_code in [200, 204]:
-                    print(f"🌐 Deleted from Next.js API")
-                else:
-                    print(f"⚠️ API delete failed (status {response.status_code})")
-            except requests.exceptions.RequestException as e:
-                print(f"🚫 Could not reach Next.js API: {e}")
-        
-        return removed
+        total = len(sorted_tasks)
+        self.speak(f"You have {total} tasks.")
+        upcoming = [t for t in sorted_tasks if parse_task_datetime(t) >= now][:3]
+        if upcoming:
+            self.speak("Your next tasks are:")
+            for t in upcoming:
+                self.speak(f"{t.get('name')}, on {t.get('date')} at {t.get('time')}")
 
     def clear_tasks(self):
-        """Clear all tasks locally AND on API."""
         with self.action_lock:
             count = len(self.tasks)
             if count == 0:
                 print("📋 No tasks to clear.")
+                self.speak("No tasks to clear.")
                 return
             self.tasks.clear()
-        
-        print(f"🧹 Cleared {count} task{'s' if count != 1 else ''} locally.")
-        self.speak(f"Cleared {count} task{'s' if count != 1 else ''}.")
-        
-        # Sync clear to API (if supported)
+        print(f"🧹 Cleared {count} tasks.")
+        self.speak(f"Cleared {count} tasks.")
         try:
             response = requests.delete(self.api_url, timeout=5)
-            if response.status_code in [200, 204]:
-                print(f"🌐 Cleared all tasks from Next.js API")
-            else:
-                print(f"⚠️ API clear failed (status {response.status_code})")
-        except requests.exceptions.RequestException as e:
-            print(f"🚫 Could not reach Next.js API: {e}")
+            if response.status_code in (200, 204):
+                print("🌐 Cleared all from API")
+        except Exception as e:
+            print(f"🚫 API clear failed: {e}")
 
-    # ==========================================
-    # MOVEMENT CONTROL
-    # ==========================================
+    # -----------------------
+    # Movement helpers
+    # -----------------------
     def move_forward(self, duration=None):
-        """Move forward (continuous if no duration, timed if duration given)."""
         if duration:
-            print(f"Moving forward for {duration} seconds...")
             self.set_wheel_velocity(2.0)
             time.sleep(duration)
             self.stop()
@@ -355,9 +419,7 @@ class DeskBuddy(Robot):
             self.set_wheel_velocity(self.max_speed)
 
     def move_backward(self, duration=None):
-        """Move backward."""
         if duration:
-            print(f"Moving backward for {duration} seconds...")
             self.set_wheel_velocity(-2.0)
             time.sleep(duration)
             self.stop()
@@ -365,109 +427,121 @@ class DeskBuddy(Robot):
             self.set_wheel_velocity(-self.max_speed)
 
     def turn(self, direction, duration):
-        """Turn left or right for specified duration."""
-        print(f"Turning {direction} for {duration} seconds...")
-        
         if direction.lower() == 'left':
             self.set_wheel_velocity_differential(-self.turn_speed, self.turn_speed)
         elif direction.lower() == 'right':
             self.set_wheel_velocity_differential(self.turn_speed, -self.turn_speed)
-        
         time.sleep(duration)
         self.stop()
 
     def set_wheel_velocity(self, velocity):
-        """Set all wheels to same velocity."""
         with self.action_lock:
-            self.left_wheel.setVelocity(velocity)
-            self.right_wheel.setVelocity(velocity)
-            self.left_rear_wheel.setVelocity(velocity)
-            self.right_rear_wheel.setVelocity(velocity)
+            try:
+                self.left_wheel.setVelocity(velocity)
+                self.right_wheel.setVelocity(velocity)
+                self.left_rear_wheel.setVelocity(velocity)
+                self.right_rear_wheel.setVelocity(velocity)
+            except Exception:
+                pass
 
     def set_wheel_velocity_differential(self, left_vel, right_vel):
-        """Set left and right wheels to different velocities (for turning)."""
         with self.action_lock:
-            self.left_wheel.setVelocity(left_vel)
-            self.right_wheel.setVelocity(right_vel)
-            self.left_rear_wheel.setVelocity(left_vel)
-            self.right_rear_wheel.setVelocity(right_vel)
+            try:
+                self.left_wheel.setVelocity(left_vel)
+                self.right_wheel.setVelocity(right_vel)
+                self.left_rear_wheel.setVelocity(left_vel)
+                self.right_rear_wheel.setVelocity(right_vel)
+            except Exception:
+                pass
 
     def stop(self):
-        """Stop all wheel movement."""
         with self.action_lock:
-            self.left_wheel.setVelocity(0.0)
-            self.right_wheel.setVelocity(0.0)
-            self.left_rear_wheel.setVelocity(0.0)
-            self.right_rear_wheel.setVelocity(0.0)
+            try:
+                self.left_wheel.setVelocity(0.0)
+                self.right_wheel.setVelocity(0.0)
+                self.left_rear_wheel.setVelocity(0.0)
+                self.right_rear_wheel.setVelocity(0.0)
+            except Exception:
+                pass
 
-    # ==========================================
-    # ACTIONS
-    # ==========================================
+    # -----------------------
+    # Actions
+    # -----------------------
     def speak(self, message):
-        """Speak message with LED animation."""
+        """Speak with LED animation."""
         print(f"🗣️ Speaking: '{message}'")
-        
         try:
             self.speaker.speak(message, 1.0)
-        except Exception as e:
-            print(f"⚠️ Speaker error: {e}")
-        
-        # LED blinking during speech
+        except Exception:
+            pass
+
         words = len(message.split())
-        speak_duration = max(1.0, words * 0.3)
-        blink_interval = 0.5
-        elapsed_time = 0.0
-
-        while elapsed_time < speak_duration:
+        speak_duration = max(1.0, words * 0.28)
+        blink_interval = 0.45
+        elapsed = 0.0
+        while elapsed < speak_duration:
             with self.action_lock:
-                self.led_left.set(1)
-                self.led_right.set(1)
-            time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
-            elapsed_time += blink_interval/2
-
-            if elapsed_time >= speak_duration:
-                break
-
+                try:
+                    self.led_left.set(1)
+                    self.led_right.set(1)
+                except Exception:
+                    pass
+            sleep_time = max(0, min(blink_interval / 2, speak_duration - elapsed))
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            elapsed += blink_interval / 2
+            
             with self.action_lock:
-                self.led_left.set(0)
-                self.led_right.set(0)
-            time.sleep(min(blink_interval/2, speak_duration - elapsed_time))
-            elapsed_time += blink_interval/2
-
-        with self.action_lock:
-            self.led_left.set(0)
-            self.led_right.set(0)
+                try:
+                    self.led_left.set(0)
+                    self.led_right.set(0)
+                except Exception:
+                    pass
+            sleep_time = max(0, min(blink_interval / 2, speak_duration - elapsed))
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            elapsed += blink_interval / 2
 
     def wave(self):
-        """Wave with head and right arm."""
         print("👋 Waving...")
-        
         with self.action_lock:
-            self.head_motor.setPosition(0.2)
-            self.right_hand_motor.setPosition(1)
+            try:
+                self.head_motor.setPosition(0.2)
+                self.right_hand_motor.setPosition(1)
+            except Exception:
+                pass
         time.sleep(0.5)
-        
         with self.action_lock:
-            self.head_motor.setPosition(-0.2)
-            self.right_hand_motor.setPosition(-1)
+            try:
+                self.head_motor.setPosition(-0.2)
+                self.right_hand_motor.setPosition(-1)
+            except Exception:
+                pass
         time.sleep(0.5)
-        
         with self.action_lock:
-            self.head_motor.setPosition(0.0)
-            self.right_hand_motor.setPosition(0.0)
+            try:
+                self.head_motor.setPosition(0.0)
+                self.right_hand_motor.setPosition(0.0)
+            except Exception:
+                pass
 
     def blink_lights(self):
-        """Blink LEDs 3 times."""
-        print("✨ Blinking...")
-        for i in range(3):
+        print("✨ Blinking lights...")
+        for _ in range(3):
             with self.action_lock:
-                self.led_left.set(1)
-                self.led_right.set(1)
-            time.sleep(0.3)
+                try:
+                    self.led_left.set(1)
+                    self.led_right.set(1)
+                except Exception:
+                    pass
+            time.sleep(0.25)
             with self.action_lock:
-                self.led_left.set(0)
-                self.led_right.set(0)
-            time.sleep(0.3)
+                try:
+                    self.led_left.set(0)
+                    self.led_right.set(0)
+                except Exception:
+                    pass
+            time.sleep(0.25)
 
     def say_hello(self):
         self.speak("Hello! I'm your Robo Desk Buddy!")
@@ -507,11 +581,10 @@ class DeskBuddy(Robot):
         self.run_async(lambda: self.speak("I am dancing while moving!"))
         print("🤹 All actions started.")
 
-    # ==========================================
-    # THREADING
-    # ==========================================
+    # -----------------------
+    # Async thread runner
+    # -----------------------
     def run_async(self, func):
-        """Execute function in separate thread."""
         def wrapper():
             try:
                 func()
@@ -519,9 +592,10 @@ class DeskBuddy(Robot):
                 print(f"❌ Thread error: {e}")
             finally:
                 with self.action_lock:
-                    if threading.current_thread() in self.active_threads:
-                        self.active_threads.remove(threading.current_thread())
-        
+                    thr = threading.current_thread()
+                    if thr in self.active_threads:
+                        self.active_threads.remove(thr)
+
         thread = threading.Thread(target=wrapper, daemon=True)
         with self.action_lock:
             self.active_threads.append(thread)
@@ -529,19 +603,70 @@ class DeskBuddy(Robot):
         return thread
 
     def stop_all(self):
-        """Emergency stop - reset all devices."""
-        print("🛑 Stopping all actions...")
-        
+        print("🛑 Stopping all...")
         with self.action_lock:
-            self.head_motor.setPosition(0.0)
-            self.led_left.set(0)
-            self.led_right.set(0)
-            self.left_wheel.setVelocity(0.0)
-            self.right_wheel.setVelocity(0.0)
-            self.left_rear_wheel.setVelocity(0.0)
-            self.right_rear_wheel.setVelocity(0.0)
+            try:
+                self.head_motor.setPosition(0.0)
+                self.led_left.set(0)
+                self.led_right.set(0)
+            except Exception:
+                pass
+            self.set_wheel_velocity(0.0)
+
+    # -----------------------
+    # Input handling (typing)
+    # -----------------------
+    def handle_reminder_input(self, key):
+        """Handle typing for reminder mode with proper key debouncing."""
+        
+        # Webots special keys (not standard ASCII)
+        WEBOTS_BACKSPACE = 3
+        WEBOTS_ENTER = 4
+        
+        # ENTER key (Webots uses key 4)
+        if key == WEBOTS_ENTER and self.is_key_ready('ENTER', cooldown=0.3):
+            reminder_text = self.typed_text.strip()
+            if reminder_text:
+                print(f"\n\n🔍 Processing: '{reminder_text}'")
+                self.add_reminder_from_text(reminder_text)
+                self.input_mode = "idle"
+                self.typed_text = ""
+                print("\n✅ Reminder created! Back to normal mode.\n")
+            else:
+                print("\n⚠️ Cannot create empty reminder.")
+                self.speak("Cannot create empty reminder.")
+            return
+
+        # BACKSPACE key (Webots uses key 3)
+        if key == WEBOTS_BACKSPACE and self.is_key_ready('BACKSPACE', cooldown=0.2):
+            if self.typed_text:
+                self.typed_text = self.typed_text[:-1]
+                print(f"\rReminder: {self.typed_text} ", end="", flush=True)
+            return
+
+        # ESCAPE key (ASCII 27)
+        if key == 27 and self.is_key_ready('ESC', cooldown=0.3):
+            self.input_mode = "idle"
+            self.typed_text = ""
+            print("\n❌ Reminder entry canceled. Back to normal mode.\n")
+            self.speak("Canceled reminder input.")
+            return
+
+        # Printable characters (ASCII 32–126)
+        # Use proper cooldown to prevent key repeats
+        if self.is_key_ready(key, cooldown=0.2):
+            if 32 <= key <= 126:
+                try:
+                    ch = chr(key)
+                    self.typed_text += ch
+                    print(f"\rReminder: {self.typed_text}", end="", flush=True)
+                except Exception as e:
+                    print(f"\n[ERROR] Failed to add character: {e}")
 
 
+# ==========================================
+# MAIN
+# ==========================================
 def main():
     global robot_instance
     bot = DeskBuddy()
@@ -550,78 +675,116 @@ def main():
     keyboard = bot.getKeyboard()
     keyboard.enable(TIME_STEP)
 
-    # Start Flask API
+    # Start Flask API thread
     api_thread = threading.Thread(target=start_api_server, daemon=True)
     api_thread.start()
 
+    # User guidance
     print("=" * 70)
-    print("🤖 DESKBUDDY ROBOT CONTROLS")
+    print("🤖 DESKBUDDY ROBOT - REMINDER SYSTEM")
     print("=" * 70)
     print("MOVEMENT:  F=Forward | R=Backward | L=Turn Left | G=Turn Right | Space=Stop")
-    print("Threading MOVEMENT:  P=Patrol Mode | D=Dance | Y=All Actions Simultaneously | T=Turn Left & Speak")
+    print("THREADED:  P=Patrol | D=Dance | Y=All Actions | T=Turn & Speak")
     print("ACTIONS:   W=Wave | B=Blink | H=Say Hello")
-    print("TASKS:     A=Add Task Info | K=List Tasks | C=Clear Tasks")
+    print("REMINDERS: M=Add Reminder (NLP) | K=List Tasks | C=Clear All")
     print("SYSTEM:    S=Stop All | Q=Quit")
     print("=" * 70)
     print("📡 API: http://localhost:8000/command")
     print("=" * 70)
+    print("\nExamples:")
+    print("  'remind me at 5 pm tomorrow'")
+    print("  'team meeting on thursday aug 18 at 2 pm'")
+    print("  'call mom today at 3:30 pm'")
+    print("=" * 70)
 
     while bot.step(TIME_STEP) != -1:
         key = keyboard.getKey()
-        
-        # Movement
+        if key == -1:
+            continue
+
+        # If typing in reminder mode
+        if bot.input_mode == "adding_reminder":
+            bot.handle_reminder_input(key)
+            continue
+
+        # Idle mode controls
         if key == ord('F'):
-            bot.move_forward()
+            if bot.is_key_ready('F'):
+                bot.move_forward()
         elif key == ord('R'):
-            bot.move_backward()
+            if bot.is_key_ready('R'):
+                bot.move_backward()
         elif key == ord('L'):
-            bot.set_wheel_velocity_differential(-bot.turn_speed, bot.turn_speed)
+            if bot.is_key_ready('L'):
+                bot.set_wheel_velocity_differential(-bot.turn_speed, bot.turn_speed)
         elif key == ord('G'):
-            bot.set_wheel_velocity_differential(bot.turn_speed, -bot.turn_speed)
+            if bot.is_key_ready('G'):
+                bot.set_wheel_velocity_differential(bot.turn_speed, -bot.turn_speed)
         elif key == ord(' '):
-            bot.stop()
+            if bot.is_key_ready('SPACE'):
+                bot.stop()
 
         # Threaded Movement
         elif key == ord('P'):
-            bot.run_async(bot.patrol_mode)
-
+            if bot.is_key_ready('P'):
+                bot.run_async(bot.patrol_mode)
         elif key == ord('D'):
-            bot.run_async(bot.dance)
-
+            if bot.is_key_ready('D'):
+                bot.run_async(bot.dance)
         elif key == ord('Y'):
-            bot.run_async(bot.all_actions)
-
+            if bot.is_key_ready('Y'):
+                bot.run_async(bot.all_actions)
         elif key == ord('T'):
-            bot.run_async(lambda: bot.turn_and_speak("I am turning left while speaking!"))
+            if bot.is_key_ready('T'):
+                bot.run_async(lambda: bot.turn_and_speak("I am turning left while speaking!"))
 
         # Actions
         elif key == ord('W'):
-            bot.run_async(bot.wave)
+            if bot.is_key_ready('W'):
+                bot.run_async(bot.wave)
         elif key == ord('B'):
-            bot.run_async(bot.blink_lights)
+            if bot.is_key_ready('B'):
+                bot.run_async(bot.blink_lights)
         elif key == ord('H'):
-            bot.run_async(bot.say_hello)
-        
-        # Tasks
-        elif key == ord('A'):
-            print("\n📝 ADD TASK via API:")
-            print("curl -X POST http://localhost:8000/command -H 'Content-Type: application/json' \\")
-            print("-d '{\"action\":\"add_task\",\"task_name\":\"YOUR_TASK\",\"date\":\"2025-10-16\",\"time\":\"14:00\"}'")
-            bot.run_async(lambda: bot.speak("Use API to add task. Check console."))
-        
+            if bot.is_key_ready('H'):
+                bot.run_async(bot.say_hello)
+
+        # Reminders
+        elif key == ord('M'):
+            if bot.is_key_ready('M'):
+                bot.input_mode = "adding_reminder"
+                bot.typed_text = ""  # Clear any previous text
+                # Clear the 'M' key timestamp so it doesn't get registered as typed text
+                if 'M' in bot.key_timestamps:
+                    del bot.key_timestamps['M']
+                if ord('M') in bot.key_timestamps:
+                    del bot.key_timestamps[ord('M')]
+                print("\n" + "=" * 60)
+                print("⏰ ADD REMINDER MODE - NATURAL LANGUAGE")
+                print("=" * 60)
+                print("Type your reminder and press ENTER:")
+                print("Press ESC to cancel")
+                print("=" * 60 + "\n")
+                print("Reminder: ", end="", flush=True)
+                bot.run_async(lambda: bot.speak("Add reminder mode. Type naturally."))
+
         elif key == ord('K'):
-            bot.run_async(bot.list_tasks_vocal)
-        
+            if bot.is_key_ready('K'):
+                bot.run_async(bot.list_tasks_vocal)
+
         elif key == ord('C'):
-            bot.run_async(bot.clear_tasks)
-        
+            if bot.is_key_ready('C'):
+                bot.run_async(bot.clear_tasks)
+
         # System
         elif key == ord('S'):
-            bot.stop_all()
+            if bot.is_key_ready('S'):
+                bot.stop_all()
         elif key == ord('Q'):
-            print("👋 Quitting...")
-            bot.stop_all()
-            break
+            if bot.is_key_ready('Q'):
+                print("👋 Quitting...")
+                bot.stop_all()
+                break
 
     print("🤖 Desk Buddy shutting down...")
 
