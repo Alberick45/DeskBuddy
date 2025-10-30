@@ -294,7 +294,11 @@ class DeskBuddy(Robot):
             return
 
         task_name, reminder_date, reminder_time = self.parse_reminder_nlp(text)
-
+        # 🧹 Clean up the extracted text before storing
+        if task_name:
+            task_name = task_name.strip()
+            if task_name.isupper():
+                task_name = task_name.lower().capitalize()
         task = {
             "name": task_name,
             "date": reminder_date,
@@ -307,7 +311,8 @@ class DeskBuddy(Robot):
             self.tasks.append(task)
 
         print(f"✅ Reminder added: {task_name} — {reminder_date} {reminder_time}")
-        self.speak(f"Reminder set: {task_name}, on {reminder_date} at {reminder_time}")
+        spoken_text = f"Reminder set: {task_name}, on {reminder_date} at {reminder_time}"
+        self.speak(spoken_text)
 
         def sync_add():
             try:
