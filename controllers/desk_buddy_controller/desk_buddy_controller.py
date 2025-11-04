@@ -220,7 +220,7 @@ class DeskBuddy(Robot):
                 task_name = re.sub(rf'\b(next\s+)?{day_name}\b', '', task_name, flags=re.IGNORECASE).strip()
                 break
 
-        # Month name + day
+        # Month name + day (multiple formats)
         month_names = {
             'jan': 1, 'january': 1, 'feb': 2, 'february': 2,
             'mar': 3, 'march': 3, 'apr': 4, 'april': 4,
@@ -230,6 +230,7 @@ class DeskBuddy(Robot):
             'dec': 12, 'december': 12
         }
 
+        # Try: "nov 21", "november 21"
         for mname, mnum in month_names.items():
             match = re.search(rf'\b{mname}\s+(\d{{1,2}})\b', text_lower)
             if match:
@@ -245,8 +246,9 @@ class DeskBuddy(Robot):
                     pass
                 break
 
+        # Try: "21 nov", "21 november", "21st november"
         for mname, mnum in month_names.items():
-            match = re.search(rf'\b(\d{{1,2}})\s+{mname}\b', text_lower)
+            match = re.search(rf'\b(\d{{1,2}})(?:st|nd|rd|th)?\s+{mname}\b', text_lower)
             if match:
                 day = int(match.group(1))
                 year = now.year
@@ -255,10 +257,37 @@ class DeskBuddy(Robot):
                     if candidate < now:
                         candidate = datetime(year + 1, mnum, day)
                     reminder_date = candidate.strftime("%Y-%m-%d")
-                    task_name = re.sub(rf'\b\d{{1,2}}\s+{mname}\b', '', task_name, flags=re.IGNORECASE).strip()
+                    task_name = re.sub(rf'\b\d{{1,2}}(?:st|nd|rd|th)?\s+{mname}\b', '', task_name, flags=re.IGNORECASE).strip()
                 except ValueError:
                     pass
                 break
+
+        # Try: numeric formats "21/11", "21/10", "11/21" (DD/MM or MM/DD)
+        numeric_date = re.search(r'\b(\d{1,2})[/\-](\d{1,2})\b', text_lower)
+        if numeric_date and reminder_date == now.strftime("%Y-%m-%d"):
+            part1 = int(numeric_date.group(1))
+            part2 = int(numeric_date.group(2))
+            year = now.year
+            
+            # Try DD/MM first (European format)
+            try:
+                if part1 <= 31 and part2 <= 12:
+                    candidate = datetime(year, part2, part1)
+                    if candidate < now:
+                        candidate = datetime(year + 1, part2, part1)
+                    reminder_date = candidate.strftime("%Y-%m-%d")
+                    task_name = re.sub(r'\b\d{1,2}[/\-]\d{1,2}\b', '', task_name).strip()
+            except ValueError:
+                # Try MM/DD (US format)
+                try:
+                    if part1 <= 12 and part2 <= 31:
+                        candidate = datetime(year, part1, part2)
+                        if candidate < now:
+                            candidate = datetime(year + 1, part1, part2)
+                        reminder_date = candidate.strftime("%Y-%m-%d")
+                        task_name = re.sub(r'\b\d{1,2}[/\-]\d{1,2}\b', '', task_name).strip()
+                except ValueError:
+                    pass
 
         # Final cleanup
         task_name = re.sub(r'\s+', ' ', task_name)
@@ -290,7 +319,6 @@ class DeskBuddy(Robot):
     def add_reminder_from_text(self, text):
         if not text or not text.strip():
             print("⚠️ No reminder text provided.")
-            self.speak("Error: No reminder text provided.")
             return
 
         task_name, reminder_date, reminder_time = self.parse_reminder_nlp(text)
@@ -311,8 +339,9 @@ class DeskBuddy(Robot):
             self.tasks.append(task)
 
         print(f"✅ Reminder added: {task_name} — {reminder_date} {reminder_time}")
+        # Only speak AFTER reminder is fully processed
         spoken_text = f"Reminder set: {task_name}, on {reminder_date} at {reminder_time}"
-        self.speak(spoken_text)
+        self.run_async(lambda: self.speak(spoken_text))
 
         def sync_add():
             try:
@@ -621,15 +650,42 @@ class DeskBuddy(Robot):
     # -----------------------
     # Input handling (typing)
     # -----------------------
+    def handle_debug_typing(self, key):
+        """DEBUG MODE: IMMEDIATE PRINT - Test typing and find special key codes."""
+        
+        # PRINT EVERY KEY IMMEDIATELY - NO CONDITIONS
+        print(f"[KEY={key}]", end="", flush=True)
+        
+        # Exit on TAB
+        if key == 1:
+            self.input_mode = "idle"
+            self.typed_text = ""
+            print("\n✅ DEBUG MODE ENDED\n")
+            return
+        
+        # If printable, also show the character
+        if 32 <= key <= 126:
+            ch = chr(key)
+            self.typed_text += ch
+            print(f"'{ch}' ", end="", flush=True)
+        
+        # Show text after ENTER
+        if key == 4:
+            print(f"\n📝 Full text: '{self.typed_text}'\n")
+            print("Debug: ", end="", flush=True)
+    
     def handle_reminder_input(self, key):
         """Handle typing for reminder mode with proper key debouncing."""
         
-        # Webots special keys (not standard ASCII)
+        # Webots special keys (confirmed non-standard)
         WEBOTS_BACKSPACE = 3
         WEBOTS_ENTER = 4
+        WEBOTS_ESC = 1  # TAB key = 1 in Webots
         
         # ENTER key (Webots uses key 4)
-        if key == WEBOTS_ENTER and self.is_key_ready('ENTER', cooldown=0.3):
+        if key == WEBOTS_ENTER:
+            if not self.is_key_ready('ENTER', cooldown=0.3):
+                return  # Debounce
             reminder_text = self.typed_text.strip()
             if reminder_text:
                 print(f"\n\n🔍 Processing: '{reminder_text}'")
@@ -639,34 +695,41 @@ class DeskBuddy(Robot):
                 print("\n✅ Reminder created! Back to normal mode.\n")
             else:
                 print("\n⚠️ Cannot create empty reminder.")
-                self.speak("Cannot create empty reminder.")
             return
 
         # BACKSPACE key (Webots uses key 3)
-        if key == WEBOTS_BACKSPACE and self.is_key_ready('BACKSPACE', cooldown=0.2):
+        if key == WEBOTS_BACKSPACE:
+            if not self.is_key_ready('BACKSPACE', cooldown=0.2):
+                return  # Debounce
             if self.typed_text:
                 self.typed_text = self.typed_text[:-1]
-                print(f"\rReminder: {self.typed_text} ", end="", flush=True)
+                # Clear entire line and reprint with label
+                print(f"\r{' ' * 100}\rReminder: {self.typed_text}", end="", flush=True)
             return
 
-        # ESCAPE key (ASCII 27)
-        if key == 27 and self.is_key_ready('ESC', cooldown=0.3):
+        # ESCAPE key (TAB = key 1 in Webots)
+        if key == WEBOTS_ESC:
+            if not self.is_key_ready('ESC', cooldown=0.3):
+                return  # Debounce
             self.input_mode = "idle"
             self.typed_text = ""
-            print("\n❌ Reminder entry canceled. Back to normal mode.\n")
-            self.speak("Canceled reminder input.")
+            print(f"\n\n❌ Reminder entry canceled. Back to normal mode.\n")
             return
 
         # Printable characters (ASCII 32–126)
-        # Use proper cooldown to prevent key repeats
-        if self.is_key_ready(key, cooldown=0.2):
-            if 32 <= key <= 126:
-                try:
-                    ch = chr(key)
-                    self.typed_text += ch
-                    print(f"\rReminder: {self.typed_text}", end="", flush=True)
-                except Exception as e:
-                    print(f"\n[ERROR] Failed to add character: {e}")
+        # Print character immediately, one at a time
+        if 32 <= key <= 126:
+            # Check cooldown to prevent repeats
+            if not self.is_key_ready(key, cooldown=0.12):
+                return  # Debounce - ignore this keypress
+            
+            try:
+                ch = chr(key)
+                self.typed_text += ch
+                # Print just the new character immediately
+                print(ch, end="", flush=True)
+            except Exception as e:
+                print(f"\n[ERROR] Failed to add character: {e}")
 
 
 # ==========================================
@@ -692,6 +755,7 @@ def main():
     print("THREADED:  P=Patrol | D=Dance | Y=All Actions | T=Turn & Speak")
     print("ACTIONS:   W=Wave | B=Blink | H=Say Hello")
     print("REMINDERS: M=Add Reminder (NLP) | K=List Tasks | C=Clear All")
+    print("DEBUG:     X=Test Typing Mode (find key codes)")
     print("SYSTEM:    S=Stop All | Q=Quit")
     print("=" * 70)
     print("📡 API: http://localhost:8000/command")
@@ -705,6 +769,11 @@ def main():
     while bot.step(TIME_STEP) != -1:
         key = keyboard.getKey()
         if key == -1:
+            continue
+
+        # If in debug typing mode
+        if bot.input_mode == "debug_typing":
+            bot.handle_debug_typing(key)
             continue
 
         # If typing in reminder mode
@@ -754,6 +823,21 @@ def main():
             if bot.is_key_ready('H'):
                 bot.run_async(bot.say_hello)
 
+        # Debug Mode
+        elif key == ord('X'):
+            if bot.is_key_ready('X'):
+                bot.input_mode = "debug_typing"
+                bot.typed_text = ""
+                # Clear X from timestamps
+                bot.key_timestamps.clear()
+                print("\n" + "=" * 60)
+                print("🐛 DEBUG TYPING MODE")
+                print("=" * 60)
+                print("Type anything. Special keys will show their codes.")
+                print("Press TAB to exit debug mode.")
+                print("=" * 60 + "\n")
+                print("Debug: ", end="", flush=True)
+
         # Reminders
         elif key == ord('M'):
             if bot.is_key_ready('M'):
@@ -767,11 +851,13 @@ def main():
                 print("\n" + "=" * 60)
                 print("⏰ ADD REMINDER MODE - NATURAL LANGUAGE")
                 print("=" * 60)
-                print("Type your reminder and press ENTER:")
-                print("Press ESC to cancel")
+                print("Type your reminder and press ENTER (Webots ENTER=4)")
+                print("Press TAB to cancel")
+                print("=" * 60)
+                print("Examples: 'nov 21', '21st november', '21/11', 'tomorrow at 5pm'")
                 print("=" * 60 + "\n")
+                # NO SPEECH - just show the prompt immediately
                 print("Reminder: ", end="", flush=True)
-                bot.run_async(lambda: bot.speak("Add reminder mode. Type naturally."))
 
         elif key == ord('K'):
             if bot.is_key_ready('K'):
