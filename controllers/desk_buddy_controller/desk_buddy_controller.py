@@ -3,6 +3,7 @@ import time
 import requests
 from controller import Robot, Keyboard
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from datetime import datetime, timedelta
 import re
 
@@ -13,6 +14,7 @@ TIME_STEP = 32
 # FLASK APP SETUP
 # ==========================================
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 robot_instance = None
 
 
@@ -66,6 +68,10 @@ def handle_command():
         tasks = robot_instance.get_tasks()
         return jsonify({"tasks": tasks}), 200
 
+    elif action == "list_tasks_vocal":
+        robot_instance.run_async(robot_instance.list_tasks_vocal)
+        return jsonify({"status": "Reading tasks aloud"}), 200
+
     elif action == "clear_tasks":
         robot_instance.clear_tasks()
         return jsonify({"status": "All tasks cleared"}), 200
@@ -74,6 +80,14 @@ def handle_command():
         return jsonify({"error": f"Unknown action '{action}'"}), 400
 
     return jsonify({"status": f"Action '{action}' executed"}), 200
+
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Health check endpoint for dashboard connection testing."""
+    global robot_instance
+    status = "connected" if robot_instance else "disconnected"
+    return jsonify({"status": status, "robot": "DeskBuddy"}), 200
 
 
 def start_api_server():
